@@ -14,12 +14,14 @@ This platform provides a chat-based onboarding experience for aspiring software 
 ## Features
 
 ### Conversational AI Onboarding
+
 - Natural, flowing conversation powered by Llama 3.3 70B via Groq
 - AI personality modeled after a friendly Ghanaian tech mentor
 - Smart suggestions to guide applicants through responses
 - Meme integration via Giphy for a fun, engaging experience
 
 ### Premium UI/UX
+
 - iOS 26-inspired liquid glass aesthetic
 - iMessage-style chat bubbles with smooth animations
 - Phase-based progress indicator
@@ -27,12 +29,14 @@ This platform provides a chat-based onboarding experience for aspiring software 
 - Mobile-responsive design
 
 ### Session Management
+
 - MongoDB persistence for all application data
 - Email-based user identification
 - Secret phrase verification for returning users (SHA-256 hashed)
 - Resume previous sessions or start fresh
 
 ### Reliability
+
 - Retry functionality with exponential backoff
 - Idempotent message handling
 - Dynamic input types (email, phone, URL, text)
@@ -51,7 +55,7 @@ This platform provides a chat-based onboarding experience for aspiring software 
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - MongoDB instance (local or Atlas)
 - Groq API key
 - Giphy API key (optional, for memes)
