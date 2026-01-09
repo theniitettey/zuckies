@@ -333,11 +333,16 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
 
   // Debounced Giphy search
   useEffect(() => {
+    if (!giphySearch.trim()) {
+      setGiphyResults([]);
+      return;
+    }
+    
     const timer = setTimeout(() => {
-      if (showGiphySearch && giphySearch) {
+      if (showGiphySearch && giphySearch.trim()) {
         searchGiphy(giphySearch);
       }
-    }, 300);
+    }, 500);
     return () => clearTimeout(timer);
   }, [giphySearch, showGiphySearch]);
 
@@ -1046,7 +1051,10 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                           value={giphySearch}
                           onChange={(e) => setGiphySearch(e.target.value)}
                           placeholder="search for gifs..."
-                          className="w-full bg-foreground/5 border border-foreground/10 rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 outline-none focus:ring-1 focus:ring-orange-400/50"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          autoCapitalize="off"
+                          className="w-full bg-foreground/5 border border-foreground/10 rounded-lg px-3 py-2.5 text-base text-foreground placeholder:text-foreground/30 outline-none focus:ring-1 focus:ring-orange-400/50"
                         />
                         {isSearchingGiphy && (
                           <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/40 animate-spin" />
@@ -1057,7 +1065,13 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                 </AnimatePresence>
 
                 {/* Giphy results or default memes */}
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-48 overflow-y-auto scrollbar-hide">
+                <div
+                  className={`grid gap-2 max-h-52 overflow-y-auto scrollbar-hide ${
+                    showGiphySearch && giphyResults.length > 0
+                      ? "grid-cols-2 sm:grid-cols-4"
+                      : "grid-cols-3 sm:grid-cols-5"
+                  }`}
+                >
                   {showGiphySearch && giphyResults.length > 0 ? (
                     giphyResults.map((gif, i) => (
                       <motion.button

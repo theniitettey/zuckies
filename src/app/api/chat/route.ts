@@ -701,11 +701,18 @@ export async function POST(request: NextRequest) {
       // Remove any function call artifacts that might leak through
       // These patterns handle various formats the model might output
       cleanResponse = cleanResponse
-        .replace(/<function=[\w_]+>[\s\S]*?<\/function>/g, "") // <function=name>{...}</function>
+        .replace(/<function=\w+>[\s\S]*?<\/function>/g, "") // <function=name>{...}</function>
         .replace(/<function[^>]*>[\s\S]*?<\/function>/g, "") // <function ...>...</function>
         .replace(/\[function[^\]]*\]/g, "") // [function ...]
         .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "") // <tool_call>...</tool_call>
         .replace(/<\|tool_call\|>[\s\S]*?<\|\/tool_call\|>/g, "") // <|tool_call|>...</|/tool_call|>
+        .replace(/next_suggestions?\s*[:=]\s*\[[^\]]*\]/gi, "") // next_suggestions: [...] or next_suggestion = [...]
+        .replace(/"?next_suggestions?"?\s*[:=]\s*\[[^\]]*\]/gi, "") // "next_suggestions": [...]
+        .replace(/suggestions?\s*[:=]\s*\[[^\]]*\]/gi, "") // suggestions: [...]
+        .replace(/next[_\s]?step\s*[:=]\s*["'][^"']*["']/gi, "") // next_step: "..." or next step = '...'
+        .replace(/"?next[_\s]?step"?\s*[:=]\s*["'][^"']*["']/gi, "") // "next_step": "..."
+        .replace(/\{[\s\S]*?"?next_suggestions?"?\s*:[\s\S]*?\}/g, "") // {...next_suggestions:...}
+        .replace(/^\s*[\[\{][\s\S]*[\]\}]\s*$/gm, "") // standalone JSON objects/arrays
         .trim();
 
       // If the response is now empty or just whitespace, provide a fallback
