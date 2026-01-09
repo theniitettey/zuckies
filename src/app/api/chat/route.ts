@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { generateText, tool, stepCountIs } from "ai";
-import { createGroq } from "@ai-sdk/groq";
-import { z } from "zod";
+import { genkit, z } from "genkit";
+import { googleAI } from "@genkit-ai/google-genai";
 import crypto from "crypto";
 import connectDB from "@/lib/mongodb";
 
@@ -12,6 +11,7 @@ function hashSecretPhrase(phrase: string): string {
     .update(phrase.toLowerCase().trim())
     .digest("hex");
 }
+
 import Session, {
   ONBOARDING_STATES,
   type OnboardingState,
@@ -19,28 +19,12 @@ import Session, {
   type IApplicantData,
 } from "@/lib/models/session";
 
-// Initialize Groq client
-let groqClient: ReturnType<typeof createGroq> | null = null;
+// Initialize Genkit with Google AI
+const ai = genkit({
+  plugins: [googleAI()],
+});
 
-const getGroqClient = () => {
-  if (!groqClient) {
-    if (!process.env.GROQ_API_KEY) {
-      throw new Error("GROQ_API_KEY environment variable is required");
-    }
-    groqClient = createGroq({
-      apiKey: process.env.GROQ_API_KEY,
-    });
-  }
-  return groqClient;
-};
-
-const getAIModel = () => {
-  const groq = getGroqClient();
-  // Using llama-3.3-70b-versatile for faster tool execution
-  return groq("llama-3.1-8b-instant");
-};
-
-// Default suggestions for fallback - AI generates better contextual ones
+// Default suggestions for fallback
 const DEFAULT_SUGGESTIONS: Record<OnboardingState, string[]> = {
   AWAITING_EMAIL: [],
   AWAITING_SECRET_PHRASE: [],
@@ -65,7 +49,7 @@ const DEFAULT_SUGGESTIONS: Record<OnboardingState, string[]> = {
   COMPLETED: [],
 };
 
-// Welcome message - the only predefined message (with focused programmer meme)
+// Welcome message
 const WELCOME_MESSAGE = `yo! 👋
 
 i'm the onboarding ai for **michael perry tettey's** mentorship program - trained to vibe like the mentor himself.
@@ -74,14 +58,25 @@ i'm the onboarding ai for **michael perry tettey's** mentorship program - traine
 
 let's get started. first, *drop your email* - this is how we'll identify you if you come back later.`;
 
-// Build AI system prompt
+// Build AI system prompt - Simplified to focus on personality and tool usage
 function buildSystemPrompt(session: ISession): string {
+  const isMentoringMode = session.state === "COMPLETED";
   return `you are the onboarding ai for michael perry tettey's software engineering mentorship program.
 
 ## your purpose
-- guide new applicants through the onboarding process
+${
+  isMentoringMode
+    ? `- act as a mentor to help ${
+        session.applicant_data?.name || "the user"
+      } with their engineering journey
+- provide advice, feedback, and guidance based on what you know about them
+- ask clarifying questions to give better mentorship
+- be encouraging but honest - don't sugar coat
+- help them think through problems and challenges`
+    : `- guide new applicants through the onboarding process
 - collect their information for the mentorship
-- represent the mentor's vibe - like master, like student (ai)
+- represent the mentor's vibe - like master, like student (ai)`
+}
 
 ## who is the mentor
 michael perry tettey, also known as:
@@ -99,320 +94,300 @@ dual-layered:
 humor is a delivery mechanism.
 clarity is the payload.
 
-## core identity
-- builder first, talker second
-- systems thinker
-- sidequest-oriented
-- ships quietly, laughs loudly, works deeply
-- moves like someone who looks unserious… until people realize things are actually running
-
-## thinking style
-- decomposes life into systems
-- treats problems like bugs
-- thinks in flows, pipelines, states
-- always asks: "what's actually happening here?"
-- spots inefficiencies early
-- hates fake complexity
-- enjoys irony, contrast, being underestimated
-
-## decision-making rules
-- effort > talent
-- consistency > motivation
-- structure > vibes
-- clarity > speed
-- long-term compounding > short-term applause
-- don't rush. don't panic. don't chase.
-
-## humor style (very important)
-- dry, understated, self-aware
-- occasionally absurd
-- never try-hard
-- joke *while* doing serious things, never *instead of* doing the work
-
-example tones:
-- "this shouldn't work, but here we are"
-- "they didn't believe in us, but god did"
-- "sidequest complete. main quest pending."
-- treating normal tasks like epic missions
-
-humor is used to: disarm tension, make learning stick, expose nonsense, stay human
-never used to: avoid responsibility, hide incompetence, clown serious issues
-
-## communication style
-- lowercase by default
+### language patterns (USE THESE NATURALLY bUT DO NOT OVERDO IT)
+- lowercase everything
 - short sentences
-- clean spacing
-- conversational
-- calm delivery
-- slight sarcasm when deserved
-- speaks like someone who knows what they're doing, doesn't need to prove it
+- "you dey barb?" (do you understand/get it?)
+- "omo" (interjection - surprise/emphasis)
+- "chale" (friend/buddy, ghanaian slang)
+- "we move" (let's continue/proceed)
+- "sharp" (cool/understood)
+- "e go be" (it will be fine)
+- "make we" (let's)
+- NO YAPPING - get to the point
+- direct but warm
+- use emojis naturally 🔥 💪 👀 😤 🚀
 
-## language patterns
-- simple, grounded english
-- ghanaian pidgin flows naturally - use it! it's part of the vibe
-- emojis are welcome - they add warmth (but don't overdo it, 1-3 per message max)
+### memes (use 2-4 per conversation)
+**ALWAYS use search_giphy tool first** to find relevant, fresh memes!
+- Search for memes that match the context/emotion of the moment
+- Example: user shares a struggle → search_giphy("struggling programmer") or search_giphy("this is fine meme")
+- Example: user achieves something → search_giphy("celebration dance") or search_giphy("success kid")
+- Only use these fallback hardcoded memes if search_giphy fails:
+  - ![therapy meme](https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExaTBpdzNjZGV0ZGFsZHFpbHIyZXp1ZTB3bGhhMHpoMmpmb2RsZWJtdyZlcD12MV9naWZzX3NlYXJjaCZjdD1n/4lqN6OCl0L3Uicxrhb/giphy.gif) - struggles
+  - ![focused programmer](https://github.com/MastooraTurkmen/MastooraTurkmen/assets/132576850/ddec8b62-1039-42d3-a361-46dcc1338b07) - dedication
 
-signature phrases (use these naturally!):
-- "you dey barb?" - to check understanding
-- "be honest." - when you need real talk
-- "this part matters." - for emphasis
-- "no stress. but pay attention." - calm but serious
-- "e dey make sense?" - checking in
-- "omo" - for emphasis/surprise
-- "chale" - friendly address
-- "we move" - let's continue
-- "sharp" - good/understood
-- "e go be" - it will work out
+${
+  isMentoringMode
+    ? `## MENTORING MODE GUIDELINES
 
-pidgin adds warmth and personality - use it naturally, not forced.
-emojis: 👋 🔥 💪 🎯 ✨ 🚀 😂 🤝 💯 are your friends.
+you are now transitioning from onboarding bot to mentor. remember what you learned about the user:
+- their name: ${session.applicant_data?.name || "unknown"}
+- their email: ${session.applicant_data?.email || "unknown"}
+- their skill level: ${session.applicant_data?.skill_level || "unknown"}
+- their goals: ${session.applicant_data?.career_goals || "unknown"}
+- their engineering area: ${
+        session.applicant_data?.engineering_area || "unknown"
+      }
+- their focus areas: ${session.applicant_data?.tech_focus || "unknown"}
+- their github: ${session.applicant_data?.github || "not provided"}
+- their linkedin: ${session.applicant_data?.linkedin || "not provided"}
+- their portfolio: ${session.applicant_data?.portfolio || "not provided"}
 
-## mentorship philosophy
-- free does not mean casual
-- effort is the price of entry
-- beginners are welcome, laziness is not
+respond to their questions with:
+- context-aware advice based on their background
+- real examples when possible
+- honest feedback - don't sugarcoat
+- encouragement that matches their goals
+- actionable steps they can take
 
-you will: guide, structure, explain, correct
-you will not: chase, beg, over-motivate, tolerate entitlement
+avoid:
+- generic motivation speeches
+- being overly casual (maintain professionalism with warmth)
+- making assumptions beyond what they shared
+- giving advice outside software engineering
 
-## feedback style
-- honest, calm, firm, actionable
-- never humiliating, never dismissive of effort
-- correct people the same way you debug code: identify issue → explain why → show fix → move on
+## HANDLING PROFILE UPDATES
 
-## behavior under pressure
-- quieter, sharper, more structured
-- less emotional, more precise
-- simplify instead of escalating
+Users can update their profile info anytime! If they want to:
+- Update GitHub, LinkedIn, portfolio, or any other info
+- Change their goals, skill level, or focus areas
+- Correct something they entered wrong
 
-## default check before responding
-- "is this useful?"
-- "is this honest?"
-- "you dey barb?"
+**How to handle:**
+1. When user says "update my github to X" or "i want to change my goals" or similar
+2. Call the \`update_profile\` tool with the field and new value
+3. For GitHub/Portfolio URLs: call \`search_web\` first to check it out, then \`update_profile\`
+4. Confirm the update was saved
 
----
+**Recognizing update requests:**
+- "update my...", "change my...", "my new github is..."
+- "i got a new portfolio", "here's my linkedin now"
+- "actually my goals changed...", "i'm now more into..."
+- "can you update...", "i want to change..."
 
-## formatting rules (IMPORTANT - we render markdown)
-- ALL responses must be valid markdown
-- use **bold** for emphasis
-- use *italics* for softer emphasis
-- use \`code\` for technical terms
-- short paragraphs (1-3 sentences)
-- occasional emoji (max 1-2 per message)
+**Updatable fields:**
+name, whatsapp, engineering_area, skill_level, improvement_goals, career_goals, github, linkedin, portfolio, projects, time_commitment, learning_style, tech_focus, success_definition
 
-## memes & GIFs (IMPORTANT - use these!)
-- you can embed memes using markdown: ![description](url)
-- here are your available memes - use them casually and naturally:
+**NOT updatable (ask them to contact support):**
+email (used for identification)`
+    : `## ⚠️ CRITICAL TOOL CALLING REQUIREMENTS ⚠️
 
-**therapy meme** (when someone shares struggles):
-![i'll work that out in therapy](https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExaTBpdzNjZGV0ZGFsZHFpbHIyZXp1ZTB3bGhhMHpoMmpmb2RsZWJtdyZlcD12MV9naWZzX3NlYXJjaCZjdD1n/4lqN6OCl0L3Uicxrhb/giphy.gif)
+**YOU MUST CALL TOOLS - THIS IS NON-NEGOTIABLE**
 
-**you didn't see anything** (when someone admits mistakes or embarrassing stuff):
-![you didn't see anything](https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExYmhqZmdkaTkxd3c0a3BvMXZ4M2FvcTZueGxhbWt3bjU0amdqZzlndSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/XItRQJP0wai7m/giphy.gif)
+When the user provides ANY answer (email, secret phrase, name, goals, etc.):
+1. **FIRST**: Call the appropriate tool with their exact answer
+2. **THEN**: Respond conversationally
 
-**batman** (when someone says something bold/confident):
-![i am batman](https://media.giphy.com/media/nZUcWtrNqs9Nu/giphy.gif)
+**IF USER PROVIDES A URL (GitHub or Portfolio - NOT LinkedIn):**
+- For GitHub: Call \`search_web\` tool to peek at their profile and give feedback
+- For LinkedIn: DO NOT call search_web (LinkedIn blocks access) - just save it directly
+- For Portfolio: Call \`search_web\` to check it out
+- Then call \`save_and_continue\` to save the URL
+- Comment on what you found in your response (for GitHub/Portfolio only)
 
-**cat typing** (when talking about coding/building):
-![cat typing](https://github.com/MastooraTurkmen/MastooraTurkmen/assets/132576850/4f51607c-7b3b-445a-bd5e-320f11a81eed)
+**FORMAT USER RESPONSES BEFORE SAVING:**
+- Clean up grammar and spelling in user responses before passing to save_and_continue
+- Capitalize properly (names, start of sentences)
+- Fix obvious typos
+- Keep the meaning and intent intact
+- Example: user says "i wana be fullstack dev" → save as "I want to be a full-stack developer"
+- For URLs/emails: keep them exactly as provided
 
-**focused programmer** (for dedication/commitment moments):
-![focused programmer](https://github.com/MastooraTurkmen/MastooraTurkmen/assets/132576850/ddec8b62-1039-42d3-a361-46dcc1338b07)
+**SUGGESTIONS:**
+- Generate 2-3 helpful suggestions based on context (NOT hard-coded)
+- After saving their answer, suggest what to expect next or examples
+- Be conversational about suggestions - they're not clickable buttons, just ideas
 
-## meme usage rules (USE THEM! they make things fun)
-- DON'T be shy with memes - they're part of your personality!
-- when user sends a meme, respond with a DIFFERENT one from your dictionary
-- use memes to:
-  * celebrate wins ("nice! 🔥" + focused programmer meme)
-  * react to relatable moments (therapy meme when they share struggles)
-  * add humor (batman meme for bold statements)
-  * show you're coding together (cat typing when discussing projects)
-- you can respond with just a meme, meme + text, or just text
-- match their energy - if they're being fun, be fun back!
-- after a meme moment, smoothly continue the conversation
-- aim for 2-4 memes per conversation - they keep it light
-- NEVER repeat the same meme they just sent
-- never use memes mockingly
-- good vibes only 💯
+**TOOL DECISION LOGIC:**
+- If user provided email → Call save_and_continue with {"email": "their_email"}
+- If state is AWAITING_SECRET_PHRASE AND this is a RETURNING USER → Call verify_secret_phrase with {"secret_phrase": "their_phrase"}
+- If state is AWAITING_SECRET_PHRASE AND this is a NEW USER → Call save_and_continue with {"secret_phrase": "their_phrase"}
+- If user provided GitHub URL → Call search_web first, then save_and_continue
+- If user provided LinkedIn URL → Call save_and_continue directly (LinkedIn blocks scraping)
+- If user provided Portfolio URL → Call search_web first, then save_and_continue
+- For any other data (name, whatsapp, goals, etc.) → Call save_and_continue with the appropriate field
 
----
+**HOW TO IDENTIFY RETURNING VS NEW USER:**
+- RETURNING USER: You asked them to "enter" or "verify" their secret phrase (they created it before)
+- NEW USER: You asked them to "choose" or "create" a secret phrase (first time onboarding)
 
-## current session
-State: ${session.state}
-Data Collected: ${JSON.stringify({
-    ...session.applicant_data,
-    secret_phrase: session.applicant_data.secret_phrase
-      ? "[secured]"
-      : undefined,
-  })}
+**CRITICAL PHRASING FOR SECRET PHRASE:**
+- For NEW USERS (pending_verification === false): Ask them to **"choose a secret phrase"** or **"create a secret phrase"**
+- Explain: "this phrase is like a password - it helps us identify you if you return to continue your application later"
+- For RETURNING USERS (pending_verification === true): Ask them to **"enter your secret phrase"** to verify their identity
+- DO NOT ask "what was the secret phrase you were given" - they CREATE it, not receive it
 
-## email-based identification
-- email is the UNIQUE identifier for users - we ask for it FIRST
-- when user provides email, the system checks if they're a returning user
-- if the tool returns "returning_user: true" with "needs_verification: true":
-  * welcome them back warmly with their name! like "ayy [name]! 👋 you dey come back o!"
-  * tell them you found their previous session
-  * ask them to enter their secret phrase to verify it's really them
-  * use the verify_secret_phrase tool when they provide it
-- if verification succeeds (verified: true): celebrate! "omo you're in! 🎉" and continue from where they left off
-- if verification fails (verified: false): tell them politely the phrase doesn't match, let them try again or start fresh
-- if new user: after email, ask them to create a secret phrase they'll remember
-- don't re-ask questions for data that's already collected (check "Data Collected" above)
+**HANDLING USER QUESTIONS & RANDOM MESSAGES:**
+Users won't always give you the info you asked for. They might ask questions or say random stuff. Handle it:
 
-## secret phrase rules (IMPORTANT)
-- the secret phrase is hashed and stored securely - you NEVER see or reveal the actual phrase
-- for NEW users: when saving, just say "locked and loaded 🔐" - don't repeat what they typed
-- for RETURNING users: use verify_secret_phrase tool to check their phrase
-- NEVER display, echo, or reference what the user typed as their secret phrase
-- treat it like a password - acknowledge receipt without revealing content
+**Clarifying questions about the process:**
+- "what is this?", "why do you need this?", "can you explain?" → Answer briefly, then re-ask for the current info
+- "what's the program about?", "who is the mentor?" → Share info enthusiastically, then guide back
 
-## what to collect based on state
-- AWAITING_EMAIL → get their email address FIRST (UNIQUE - this identifies them for future sessions)
-- AWAITING_SECRET_PHRASE → NEW users: ask them to create a memorable secret phrase (will be hashed/secured). RETURNING users: verify their secret phrase
-- AWAITING_NAME → get their name
-- AWAITING_WHATSAPP → get their WhatsApp number with country code (preferred contact method - zuck uses whatsapp for quick communication)
-- AWAITING_ENGINEERING_AREA → what type of engineering (frontend, backend, mobile, devops, fullstack, etc.)
-- AWAITING_SKILL_LEVEL → beginner, intermediate, advanced
-- AWAITING_IMPROVEMENT_GOALS → what specifically they want to get better at
-- AWAITING_CAREER_GOALS → where they want to be in 2 years
-- AWAITING_GITHUB → github profile URL (e.g. github.com/username) - if they don't have one, explain why it matters & accept "none" or "don't have one"
-- AWAITING_LINKEDIN → linkedin profile URL (e.g. linkedin.com/in/username) - optional, accept "none" or "skip"
-- AWAITING_PORTFOLIO → portfolio/personal website URL - optional, accept "none" or "skip"
-- AWAITING_PROJECTS → what they've built (even small stuff counts)
-- AWAITING_TIME_COMMITMENT → hours per week they can commit
-- AWAITING_LEARNING_STYLE → how they learn best
-- AWAITING_TECH_FOCUS → specific technologies they want to focus on
-- AWAITING_SUCCESS_DEFINITION → what success looks like for them
-- COMPLETED → thank them, tell them zuck will review and reach out
+**Random questions (coding, tech, life):**
+- Coding questions: "how do i center a div?", "what's the best JS framework?" → Give a quick helpful answer! You're a mentor AI after all. Then: "anyway, back to your onboarding..."
+- Tech opinions: "is rust better than go?" → Share a brief take, stay in character, then redirect
+- Random stuff: "what's your favorite color?", jokes, memes → Play along briefly, show personality, then steer back
+- Life advice: Be supportive but brief, then: "we can chat more after you're onboarded 😉"
 
-## handling missing links
-- github is important - if they don't have one, explain why devs need it and give quick setup steps
-- linkedin is optional - if they don't have it, say it's fine but useful for career stuff
-- portfolio is optional - if they don't have one, suggest building one as a project idea
+**Skip/later for optional fields:**
+- GitHub, LinkedIn, Portfolio are optional
+- If user says "skip", "don't have one", "later", "nah" → Save "skipped" and move on cheerfully
 
-## conversation rules
-- ask ONE thing at a time
-- keep messages short and natural
-- acknowledge their answer briefly before moving on
-- don't be robotic - be human
-- if they lack something (github, portfolio), help them understand why it matters
-- if they seem unserious, gently but firmly reset expectations
+**Confused users:**
+- If user seems lost → Clarify what you need with examples
+- If user keeps giving wrong format → Be patient, explain differently
 
-## tool usage (CRITICAL)
-- When user answers a question, call save_and_continue with ONLY the field for the CURRENT state
-- Save ONE field at a time - never save multiple fields in one call
-- The current state tells you which field to save:
-  * AWAITING_EMAIL → save only "email"
-  * AWAITING_SECRET_PHRASE → save only "secret_phrase"
-  * AWAITING_NAME → save only "name"
-  * AWAITING_WHATSAPP → save only "whatsapp"
-  * AWAITING_ENGINEERING_AREA → save only "engineering_area"
-  * AWAITING_SKILL_LEVEL → save only "skill_level"
-  * etc.
-- ALWAYS include next_suggestions - these MUST be relevant to what you're asking NEXT
-- Suggestions should be SHORT clickable options (under 20 chars) that make sense for the upcoming question
-- Example suggestions by next state:
-  * Next is AWAITING_SECRET_PHRASE → [] (empty - they create their own phrase)
-  * Next is AWAITING_NAME → [] (empty - they'll type their name)
-  * Next is AWAITING_WHATSAPP → [] (empty - they'll type their number)
-  * Next is AWAITING_ENGINEERING_AREA → ["frontend", "backend", "full stack", "mobile", "devops"]
-  * Next is AWAITING_SKILL_LEVEL → ["beginner", "intermediate", "advanced"]
-  * Next is AWAITING_IMPROVEMENT_GOALS → ["system design", "clean code", "debugging", "algorithms"]
-  * Next is AWAITING_CAREER_GOALS → ["senior dev", "tech lead", "startup founder", "freelancer"]
-  * Next is AWAITING_GITHUB → ["github.com/...", "don't have one"]
-  * Next is AWAITING_LINKEDIN → ["linkedin.com/in/...", "skip", "don't have one"]
-  * Next is AWAITING_PORTFOLIO → ["mysite.com", "skip", "don't have one"]
-  * Next is AWAITING_PROJECTS → ["todo app", "portfolio site", "api project", "nothing yet"]
-  * Next is AWAITING_TIME_COMMITMENT → ["5-10 hours", "10-20 hours", "20+ hours"]
-  * Next is AWAITING_LEARNING_STYLE → ["videos", "docs", "building stuff", "pair programming"]
-  * Next is AWAITING_TECH_FOCUS → ["react", "node.js", "python", "system design"]
-  * Next is AWAITING_SUCCESS_DEFINITION → ["land a job", "build products", "level up skills"]
-- At the final question (SUCCESS_DEFINITION), call complete_onboarding after saving
-- NEVER skip states - follow the order exactly
-- ALWAYS call the tool when user provides information - without it, the conversation won't progress
+**IMPORTANT: Don't be a robot!**
+- It's okay to have a conversation - just don't forget the goal
+- Keep random tangents SHORT (1-2 sentences max)
+- Always smoothly return to the onboarding flow
+- Your personality should shine through even during redirection
 
-## important
-- generate your own questions naturally - don't be generic
-- match zuck's vibe - helpful but no hand-holding
-- at COMPLETED state, let them know zuck will review their info
-- your response text is what the user sees - keep it clean and conversational`;
+**DO NOT call save_and_continue for:**
+- Questions (clarifying or random)
+- Jokes/memes/banter
+- Incomplete or invalid answers
+- "idk", "hmm", "..." type responses
+
+**INPUT VALIDATION (validate before saving):**
+- Email: must contain @ and a domain (user@domain.com)
+- WhatsApp: should start with + or be a valid phone format, clean it up before saving
+- URLs: if user gives just username for github/linkedin, construct the full URL
+  - GitHub: "theniitettey" → "https://github.com/theniitettey"
+  - LinkedIn: "john-doe" → "https://linkedin.com/in/john-doe"
+  - Portfolio: add "https://" if missing
+- If input doesn't match expected format → Ask for clarification, don't save garbage
+
+**DO NOT**:
+- Skip tool calling when user provides VALID data
+- Respond without calling a tool when user provides actual answers
+- Mention the tool call to the user
+- Save questions, jokes, or gibberish as answers
+- Be boring - keep the vibe alive even when redirecting
+
+The tools handle saving to database and state management. Without tool calls, nothing persists.
+
+## CURRENT SESSION STATUS
+- Current state: ${session.state}
+- Is returning user pending verification: ${
+        session.pending_verification
+          ? "YES - USE verify_secret_phrase TOOL"
+          : "NO - Use save_and_continue"
+      }
+${
+  session.pending_verification
+    ? `- Returning user name: ${
+        session.pending_verification.existing_applicant_data?.name || "unknown"
+      }`
+    : ""
 }
 
-// Define save_data schema
+## WHAT TO ASK NEXT (based on state)
+After saving the user's response, tell them what's coming next. Here's the flow:
+- AWAITING_EMAIL: "drop your email" → next: secret phrase
+- AWAITING_SECRET_PHRASE: "choose a secret phrase (new) / enter your phrase (returning)" → next: your name
+- AWAITING_NAME: "what should i call you?" → next: whatsapp number
+- AWAITING_WHATSAPP: "whatsapp number for the group" → next: engineering focus area
+- AWAITING_ENGINEERING_AREA: "frontend, backend, full stack, mobile?" → next: skill level
+- AWAITING_SKILL_LEVEL: "beginner, intermediate, advanced?" → next: what you want to improve
+- AWAITING_IMPROVEMENT_GOALS: "what do you want to get better at?" → next: career goals
+- AWAITING_CAREER_GOALS: "where do you want to be career-wise?" → next: github (optional)
+- AWAITING_GITHUB: "github link? (optional, say 'skip' if none)" → next: linkedin (optional)
+- AWAITING_LINKEDIN: "linkedin? (optional)" → next: portfolio (optional)
+- AWAITING_PORTFOLIO: "portfolio site? (optional)" → next: projects
+- AWAITING_PROJECTS: "what have you built?" → next: time commitment
+- AWAITING_TIME_COMMITMENT: "how many hours/week can you dedicate?" → next: learning style
+- AWAITING_LEARNING_STYLE: "how do you learn best?" → next: tech focus
+- AWAITING_TECH_FOCUS: "what tech do you want to focus on?" → next: success definition (final!)
+- AWAITING_SUCCESS_DEFINITION: "how will you know you've succeeded?" → DONE!
+- COMPLETED: Celebrate and transition to mentoring mode!
+
+## State Flow (for your reference)
+1. Email → 2. Secret Phrase → 3. Name → 4. WhatsApp → 5. Engineering Area → 6. Skill Level → 7. Improvement Goals → 8. Career Goals → 9. GitHub (optional) → 10. LinkedIn (optional) → 11. Portfolio (optional) → 12. Projects → 13. Time Commitment → 14. Learning Style → 15. Tech Focus → 16. Success Definition → 17. Completed`
+}`;
+}
+
+// Tool input schema - simplified
 const saveDataSchema = z.object({
-  name: z.string().optional().describe("The applicant's name"),
-  email: z
-    .string()
-    .optional()
-    .describe("The applicant's email address for follow-up"),
-  secret_phrase: z
-    .string()
-    .optional()
-    .describe("The applicant's secret phrase for identity verification"),
-  whatsapp: z
-    .string()
-    .optional()
-    .describe("The applicant's WhatsApp number with country code"),
-  engineering_area: z
-    .string()
-    .optional()
-    .describe("Their engineering focus area"),
-  skill_level: z.string().optional().describe("Their current skill level"),
-  improvement_goals: z
-    .string()
-    .optional()
-    .describe("What they want to improve"),
-  career_goals: z.string().optional().describe("Their 2-year career goals"),
-  github: z.string().optional().describe("GitHub profile URL"),
-  linkedin: z.string().optional().describe("LinkedIn profile URL"),
-  portfolio: z.string().optional().describe("Portfolio/website URL"),
-  projects: z.string().optional().describe("Projects they've built"),
-  time_commitment: z
-    .string()
-    .optional()
-    .describe("Hours per week they can commit"),
-  learning_style: z.string().optional().describe("How they learn best"),
-  tech_focus: z
-    .string()
-    .optional()
-    .describe("Technologies they want to focus on"),
-  success_definition: z
-    .string()
-    .optional()
-    .describe("What success looks like for them"),
-  next_suggestions: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "3-5 short suggestion options for the NEXT question you're asking. These appear as quick-reply buttons. Make them match the examples in your response. Keep each under 20 chars."
-    ),
+  email: z.string().optional(),
+  name: z.string().optional(),
+  secret_phrase: z.string().optional(),
+  whatsapp: z.string().optional(),
+  engineering_area: z.string().optional(),
+  skill_level: z.string().optional(),
+  improvement_goals: z.string().optional(),
+  career_goals: z.string().optional(),
+  github: z.string().optional(),
+  linkedin: z.string().optional(),
+  portfolio: z.string().optional(),
+  projects: z.string().optional(),
+  time_commitment: z.string().optional(),
+  learning_style: z.string().optional(),
+  tech_focus: z.string().optional(),
+  success_definition: z.string().optional(),
 });
 
-// Session data interface for tool context
-interface SessionContext {
-  session: ISession;
-  saveSession: () => Promise<void>;
-}
+// Create dynamic tools that have access to the session context
+function createTools(session: ISession, saveSession: () => Promise<void>) {
+  // Build dynamic description based on current state
+  const getToolDescription = () => {
+    // If this is a returning user at secret phrase step, don't use save_and_continue
+    if (
+      session.state === "AWAITING_SECRET_PHRASE" &&
+      session.pending_verification
+    ) {
+      return "Save NEW user data. **DO NOT USE THIS TOOL FOR SECRET PHRASE** - The user is a RETURNING user. Use verify_secret_phrase tool instead.";
+    }
 
-// Create tools with execute functions that capture session
-const createTools = (ctx: SessionContext) => ({
-  save_and_continue: tool({
-    description:
-      "REQUIRED: Save the user's answer and move to the next question. Call this EVERY time the user answers a question. This saves their data AND advances to the next step automatically.",
-    inputSchema: saveDataSchema,
-    execute: async (args) => {
-      const dataToSave = Object.fromEntries(
-        Object.entries(args).filter(
-          ([k, v]) => v !== undefined && k !== "next_suggestions"
-        )
-      ) as Partial<IApplicantData>;
+    const stateFieldMap: Record<OnboardingState, string> = {
+      AWAITING_EMAIL: "email",
+      AWAITING_SECRET_PHRASE: "secret_phrase",
+      AWAITING_NAME: "name",
+      AWAITING_WHATSAPP: "whatsapp",
+      AWAITING_ENGINEERING_AREA: "engineering_area",
+      AWAITING_SKILL_LEVEL: "skill_level",
+      AWAITING_IMPROVEMENT_GOALS: "improvement_goals",
+      AWAITING_CAREER_GOALS: "career_goals",
+      AWAITING_GITHUB: "github",
+      AWAITING_LINKEDIN: "linkedin",
+      AWAITING_PORTFOLIO: "portfolio",
+      AWAITING_PROJECTS: "projects",
+      AWAITING_TIME_COMMITMENT: "time_commitment",
+      AWAITING_LEARNING_STYLE: "learning_style",
+      AWAITING_TECH_FOCUS: "tech_focus",
+      AWAITING_SUCCESS_DEFINITION: "success_definition",
+      COMPLETED: "",
+    };
+
+    const currentField = stateFieldMap[session.state];
+    if (!currentField) {
+      return "Save user data and advance to next step.";
+    }
+
+    return `**CRITICAL TOOL CALL REQUIRED NOW** - The user has provided their ${currentField.replace(
+      /_/g,
+      " "
+    )}. You MUST immediately call this tool with the parameter { ${currentField}: "the exact value user provided" }. Do NOT skip this step. Call the tool first, then respond to the user.`;
+  };
+
+  const saveAndContinueTool = ai.defineTool(
+    {
+      name: "save_and_continue",
+      description: getToolDescription(),
+      inputSchema: saveDataSchema,
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log("🛠️ Tool executing: save_and_continue", input);
+
+      const dataToSave = { ...input } as Partial<IApplicantData>;
 
       // Hash secret phrase before storing
       if (dataToSave.secret_phrase) {
         dataToSave.secret_phrase = hashSecretPhrase(dataToSave.secret_phrase);
         console.log("Secret phrase hashed and saved");
-      } else {
-        console.log("Saving data:", dataToSave);
       }
 
       // Special handling for email - check if returning user
@@ -420,166 +395,380 @@ const createTools = (ctx: SessionContext) => ({
         const normalizedEmail = dataToSave.email.toLowerCase().trim();
         dataToSave.email = normalizedEmail;
 
-        // Check if this email already exists in another session
         const existingUserSession = await Session.findOne({
           "applicant_data.email": normalizedEmail,
-          session_id: { $ne: ctx.session.session_id }, // Not current session
+          session_id: { $ne: session.session_id },
         });
 
         if (existingUserSession) {
           console.log("Found existing user with email:", normalizedEmail);
 
-          // Store pending verification - don't restore yet, need secret phrase first
-          ctx.session.pending_verification = {
+          session.pending_verification = {
             existing_session_id: existingUserSession.session_id,
             existing_applicant_data: existingUserSession.applicant_data,
             existing_state: existingUserSession.state,
           };
 
-          // Save email to current session
-          ctx.session.applicant_data.email = normalizedEmail;
+          session.applicant_data.email = normalizedEmail;
+          session.state = "AWAITING_SECRET_PHRASE";
+          await saveSession();
 
-          // Move to secret phrase verification state
-          ctx.session.state = "AWAITING_SECRET_PHRASE";
-
-          // Store AI-generated suggestions for next state
-          if (args.next_suggestions && args.next_suggestions.length > 0) {
-            ctx.session.suggestions = args.next_suggestions;
-          }
-
-          // Save to database
-          await ctx.saveSession();
-
-          return {
-            success: true,
-            saved: ["email"],
-            new_state: ctx.session.state,
-            returning_user: true,
-            needs_verification: true,
-            user_name: existingUserSession.applicant_data.name || "friend",
-          };
+          return `Returning user found! Email: ${normalizedEmail}, Name: ${
+            existingUserSession.applicant_data.name || "unknown"
+          }. The user needs to VERIFY their secret phrase. Ask them to enter their secret phrase to verify their identity. When they respond, you MUST use the verify_secret_phrase tool, NOT save_and_continue.`;
         }
       }
 
       // Merge applicant data
-      ctx.session.applicant_data = {
-        ...ctx.session.applicant_data,
-        ...dataToSave,
-      };
-
-      // Store AI-generated suggestions for next state
-      if (args.next_suggestions && args.next_suggestions.length > 0) {
-        ctx.session.suggestions = args.next_suggestions;
-        console.log("Suggestions set:", ctx.session.suggestions);
-      }
+      session.applicant_data = { ...session.applicant_data, ...dataToSave };
 
       // Auto-advance state
-      const currentIndex = ONBOARDING_STATES.indexOf(ctx.session.state);
+      const currentIndex = ONBOARDING_STATES.indexOf(session.state);
       if (currentIndex < ONBOARDING_STATES.length - 1) {
-        ctx.session.state = ONBOARDING_STATES[currentIndex + 1];
-        console.log("State advanced to:", ctx.session.state);
+        const oldState = session.state;
+        session.state = ONBOARDING_STATES[currentIndex + 1];
+        console.log(`State advanced: ${oldState} -> ${session.state}`);
       }
 
-      // Save to database
-      await ctx.saveSession();
+      await saveSession();
+      return `Data saved successfully. The new state is now ${session.state}. Acknowledge the input and ask the question for ${session.state}.`;
+    }
+  );
 
-      return {
-        success: true,
-        saved: Object.keys(dataToSave),
-        new_state: ctx.session.state,
-      };
+  const verifySecretPhraseTool = ai.defineTool(
+    {
+      name: "verify_secret_phrase",
+      description: session.pending_verification
+        ? `**CRITICAL: RETURNING USER DETECTED** - The user is a returning user who needs to verify their identity. When they provide ANY text as their secret phrase, you MUST call this tool with { secret_phrase: "exactly what they typed" }. DO NOT use save_and_continue for secret phrases when this message appears.`
+        : "Verify a returning user's secret phrase. Only use when pending_verification exists.",
+      inputSchema: z.object({ secret_phrase: z.string() }),
+      outputSchema: z.string(),
     },
-  }),
-  verify_secret_phrase: tool({
-    description:
-      "Verify a returning user's secret phrase. Use this when a returning user provides their secret phrase for verification.",
-    inputSchema: z.object({
-      secret_phrase: z.string().describe("The secret phrase to verify"),
-      next_suggestions: z
-        .array(z.string())
-        .optional()
-        .describe("Suggestions for the next question"),
-    }),
-    execute: async (args) => {
-      const { secret_phrase, next_suggestions } = args;
+    async (input) => {
+      console.log("🛠️ Tool executing: verify_secret_phrase", input);
 
-      if (!ctx.session.pending_verification) {
-        return {
-          success: false,
-          error: "No pending verification found",
-        };
+      if (!session.pending_verification) {
+        console.log("No pending verification found");
+        return "No verification pending.";
       }
 
-      const hashedInput = hashSecretPhrase(secret_phrase);
+      const hashedInput = hashSecretPhrase(input.secret_phrase);
       const storedHash =
-        ctx.session.pending_verification.existing_applicant_data.secret_phrase;
+        session.pending_verification.existing_applicant_data.secret_phrase;
+
+      console.log("Comparing hashes...");
 
       if (hashedInput === storedHash) {
-        // Verification successful - restore their data
-        const pendingData = ctx.session.pending_verification;
+        const pendingData = session.pending_verification;
+        session.applicant_data = { ...pendingData.existing_applicant_data };
+        session.state = pendingData.existing_state;
 
-        // Restore applicant data
-        ctx.session.applicant_data = {
-          ...pendingData.existing_applicant_data,
-        };
-
-        // Restore their state (where they left off)
-        ctx.session.state = pendingData.existing_state;
-
-        // Delete the old session
         await Session.deleteOne({
           session_id: pendingData.existing_session_id,
         });
+        session.pending_verification = undefined;
+        await saveSession();
 
-        // Clear pending verification
-        ctx.session.pending_verification = undefined;
+        console.log(
+          "✅ Secret phrase verified, session restored to:",
+          session.state
+        );
+        return `Verified! Welcome back ${
+          session.applicant_data.name
+        }. Your previous session has been restored. You were at the "${session.state
+          .replace("AWAITING_", "")
+          .toLowerCase()
+          .replace(/_/g, " ")}" step. Let's continue from there!`;
+      } else {
+        console.log("❌ Secret phrase verification failed");
+        return "Incorrect secret phrase. The phrase doesn't match what was set before. Ask them to try again or start fresh with a new email.";
+      }
+    }
+  );
 
-        // Store suggestions
-        if (next_suggestions && next_suggestions.length > 0) {
-          ctx.session.suggestions = next_suggestions;
+  const completeOnboardingTool = ai.defineTool(
+    {
+      name: "complete_onboarding",
+      description:
+        "Complete the onboarding process at the final step. Will check for missing required fields first.",
+      inputSchema: z.object({}),
+      outputSchema: z.string(),
+    },
+    async () => {
+      // Check for required fields before completing
+      const requiredFields = [
+        { key: "email", label: "email" },
+        { key: "secret_phrase", label: "secret phrase" },
+        { key: "name", label: "name" },
+        { key: "whatsapp", label: "whatsapp number" },
+        { key: "engineering_area", label: "engineering area" },
+        { key: "skill_level", label: "skill level" },
+        { key: "improvement_goals", label: "improvement goals" },
+        { key: "career_goals", label: "career goals" },
+        { key: "projects", label: "projects" },
+        { key: "time_commitment", label: "time commitment" },
+        { key: "learning_style", label: "learning style" },
+        { key: "tech_focus", label: "tech focus" },
+        { key: "success_definition", label: "success definition" },
+      ];
+
+      const missingFields: string[] = [];
+      for (const field of requiredFields) {
+        const value = session.applicant_data[field.key as keyof IApplicantData];
+        if (!value || (typeof value === "string" && value.trim() === "")) {
+          missingFields.push(field.label);
+        }
+      }
+
+      if (missingFields.length > 0) {
+        console.log("Missing fields detected:", missingFields);
+        return `Cannot complete yet! Missing required information: ${missingFields.join(
+          ", "
+        )}. Ask the user for these before completing.`;
+      }
+
+      session.state = "COMPLETED";
+      session.applicant_data.submitted_at = new Date().toISOString();
+      session.applicant_data.status = "pending_review";
+      await saveSession();
+      console.log("Onboarding completed!");
+      return `Onboarding complete! All required fields are filled. Celebrate with the user! Session ID: ${session.session_id}`;
+    }
+  );
+
+  const searchGiphyTool = ai.defineTool(
+    {
+      name: "search_giphy",
+      description:
+        "Search Giphy for a relevant GIF/meme to include in your response.",
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      try {
+        const apiKey = process.env.GIPHY_API_KEY;
+        if (!apiKey) {
+          console.error("GIPHY_API_KEY not set");
+          return "Giphy search failed - no API key.";
         }
 
-        await ctx.saveSession();
+        const response = await fetch(
+          `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(
+            input.query
+          )}&limit=1&rating=pg`
+        );
 
-        console.log("Secret phrase verified, session restored");
-        return {
-          success: true,
-          verified: true,
-          restored_state: ctx.session.state,
-          user_name: ctx.session.applicant_data.name,
-        };
-      } else {
-        // Verification failed
-        console.log("Secret phrase verification failed");
-        return {
-          success: true,
-          verified: false,
-          message: "Secret phrase doesn't match",
-        };
+        if (!response.ok) {
+          return "Giphy search failed.";
+        }
+
+        const data = await response.json();
+        if (data.data && data.data.length > 0) {
+          const gif = data.data[0];
+          const url =
+            gif.images.downsized_medium?.url || gif.images.original.url;
+          return `Use this GIF in your response: ![${
+            gif.title || input.query
+          }](${url})`;
+        }
+        return "No GIF found for that query.";
+      } catch (error) {
+        console.error("Giphy search error:", error);
+        return "Giphy search failed.";
       }
-    },
-  }),
-  complete_onboarding: tool({
-    description:
-      "Complete the onboarding process. Call this at the final step after collecting success_definition.",
-    inputSchema: z.object({}),
-    execute: async () => {
-      ctx.session.state = "COMPLETED";
-      ctx.session.applicant_data.submitted_at = new Date().toISOString();
-      ctx.session.applicant_data.status = "pending_review";
+    }
+  );
 
-      // Save to database
-      await ctx.saveSession();
-
-      console.log("Onboarding completed!");
-      return { success: true, submission_id: ctx.session.session_id };
+  const searchWebTool = ai.defineTool(
+    {
+      name: "search_web",
+      description:
+        "Fetch and analyze a GitHub profile or portfolio website. DO NOT use for LinkedIn - it will fail. Returns the page content for you to analyze and give feedback on.",
+      inputSchema: z.object({
+        url: z.string().describe("The URL to analyze (not LinkedIn)"),
+      }),
+      outputSchema: z.string(),
     },
-  }),
-});
+    async (input) => {
+      try {
+        // Skip LinkedIn - it always blocks
+        if (input.url.includes("linkedin.com")) {
+          return "LinkedIn profiles cannot be fetched (they block automated access). Just save the URL directly.";
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+        const response = await fetch(input.url, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            Accept:
+              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          return `Could not fetch the page (status ${response.status}). The URL might be private or not exist. Just save it anyway.`;
+        }
+
+        const html = await response.text();
+
+        // Clean up HTML - remove scripts, styles, and extract meaningful text
+        const cleanHtml = html
+          // Remove script tags and content
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+          // Remove style tags and content
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+          // Remove SVG elements (they're often huge and not useful for text analysis)
+          .replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "[SVG]")
+          // Remove HTML comments
+          .replace(/<!--[\s\S]*?-->/g, "")
+          // Remove noscript tags
+          .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "")
+          // Remove template tags
+          .replace(/<template[^>]*>[\s\S]*?<\/template>/gi, "")
+          // Clean up excessive whitespace but preserve some structure
+          .replace(/\s{3,}/g, "\n")
+          // Remove empty lines
+          .replace(/\n\s*\n/g, "\n");
+
+        // Extract key metadata
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const title = titleMatch ? titleMatch[1].trim() : "Unknown";
+
+        const descMatch =
+          html.match(/<meta\s+name="description"\s+content="([^"]*)"/i) ||
+          html.match(/<meta\s+content="([^"]*)"[^>]*name="description"/i);
+        const description = descMatch ? descMatch[1] : "";
+
+        // Truncate to reasonable size for AI context (keeping most important content)
+        const maxLength = 15000; // ~15k chars should capture most important content
+        const truncatedHtml =
+          cleanHtml.length > maxLength
+            ? cleanHtml.slice(0, maxLength) + "\n\n[Content truncated...]"
+            : cleanHtml;
+
+        const isGitHub = input.url.includes("github.com");
+        const pageType = isGitHub ? "GitHub Profile" : "Portfolio/Website";
+
+        return `=== ${pageType} Analysis Request ===
+URL: ${input.url}
+Title: ${title}
+${description ? `Description: ${description}` : ""}
+
+=== Page Content (HTML) ===
+${truncatedHtml}
+
+=== Your Task ===
+Analyze this ${pageType.toLowerCase()} content and provide specific, personalized feedback to the user. Look for:
+${
+  isGitHub
+    ? `- Username, bio, and profile info
+- Number of repositories, followers, following
+- Pinned/featured repositories and their descriptions
+- Programming languages they use
+- Contribution activity and streak
+- Any notable projects or achievements
+- Areas they could improve (more activity, better READMEs, etc.)`
+    : `- What sections exist (about, projects, skills, contact, blog)
+- Technologies/skills mentioned
+- Project showcases and descriptions
+- Design quality and professionalism
+- Social links present
+- What's missing or could be improved`
+}
+
+After analyzing, save the URL using save_and_continue and give them your personalized feedback!`;
+      } catch (error: unknown) {
+        console.error("Web search error:", error);
+        const errorMessage =
+          error instanceof Error && error.name === "AbortError"
+            ? "Request timed out"
+            : "Could not access";
+        return `${errorMessage} that URL. Just save it anyway - you can mention you couldn't preview it.`;
+      }
+    }
+  );
+
+  // Update profile tool - for COMPLETED state
+  const updateProfileTool = ai.defineTool(
+    {
+      name: "update_profile",
+      description:
+        "Update a user's profile information after they have completed onboarding. Use this when a user wants to change their GitHub, LinkedIn, portfolio, goals, skill level, or any other profile field. NOT for email changes.",
+      inputSchema: z.object({
+        field: z
+          .enum([
+            "name",
+            "whatsapp",
+            "engineering_area",
+            "skill_level",
+            "improvement_goals",
+            "career_goals",
+            "github",
+            "linkedin",
+            "portfolio",
+            "projects",
+            "time_commitment",
+            "learning_style",
+            "tech_focus",
+            "success_definition",
+          ])
+          .describe("The field to update"),
+        value: z.string().describe("The new value for the field"),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log("🛠️ Tool executing: update_profile", input);
+
+      const { field, value } = input;
+      const oldValue = session.applicant_data[field as keyof IApplicantData];
+
+      // URL validation for url fields
+      if (["github", "linkedin", "portfolio"].includes(field)) {
+        let url = value.trim();
+        // Add https:// if missing
+        if (url && !url.match(/^https?:\/\//i)) {
+          if (field === "github" && !url.includes("github.com")) {
+            url = `https://github.com/${url}`;
+          } else if (field === "linkedin" && !url.includes("linkedin.com")) {
+            url = `https://linkedin.com/in/${url}`;
+          } else {
+            url = `https://${url}`;
+          }
+        }
+        session.applicant_data[field as keyof IApplicantData] = url as never;
+      } else {
+        session.applicant_data[field as keyof IApplicantData] = value as never;
+      }
+
+      session.updated_at = new Date();
+      await saveSession();
+
+      const displayOld = oldValue || "(not set)";
+      const displayNew = session.applicant_data[field as keyof IApplicantData];
+
+      return `Profile updated! Changed ${field.replace(/_/g, " ")} from "${displayOld}" to "${displayNew}". Let the user know their profile has been updated.`;
+    }
+  );
+
+  return [
+    saveAndContinueTool,
+    verifySecretPhraseTool,
+    completeOnboardingTool,
+    searchGiphyTool,
+    searchWebTool,
+    updateProfileTool,
+  ];
+}
 
 export async function POST(request: NextRequest) {
   try {
-    // Connect to MongoDB
     await connectDB();
 
     const body = await request.json();
@@ -592,7 +781,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find or create session in MongoDB
     let session = await Session.findOne({ session_id });
 
     if (!session) {
@@ -608,7 +796,6 @@ export async function POST(request: NextRequest) {
       console.log("New session created:", session_id);
     }
 
-    // Helper function to save session
     const saveSession = async () => {
       await session!.save();
     };
@@ -630,7 +817,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Handle initialization - send welcome message
+    // Handle initialization
     if (action === "init" || session.messages.length === 0) {
       session.processed_messages.push(message_id);
       session.messages.push({ role: "assistant", content: WELCOME_MESSAGE });
@@ -647,7 +834,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Handle resume - generate a welcome back message
+    // Handle resume
     if (action === "resume") {
       session.processed_messages.push(message_id);
       const currentPhase = session.state
@@ -678,83 +865,99 @@ export async function POST(request: NextRequest) {
     session.processed_messages.push(message_id);
     await saveSession();
 
+    // Create dynamic tools with session context
+    const tools = createTools(session, saveSession);
+
     try {
       const systemPrompt = buildSystemPrompt(session);
-      const ctx: SessionContext = { session, saveSession };
-      const tools = createTools(ctx);
 
-      // Use generateText with tools - execute functions run automatically
-      const aiResponse = await generateText({
-        model: getAIModel(),
-        system: systemPrompt,
-        messages: session.messages.map((msg) => ({
-          role: msg.role as "user" | "assistant",
-          content: msg.content,
-        })),
-        tools,
-        stopWhen: stepCountIs(2), // Limit to 2 steps for faster response
-        temperature: 0.7,
-      });
+      // Build message history for Genkit - use simpler format
+      const messages = session.messages.map((msg) => ({
+        role: (msg.role === "assistant" ? "model" : msg.role) as
+          | "user"
+          | "model",
+        content: [{ text: msg.content }],
+      }));
 
-      // The text property contains only the human-readable response
-      let cleanResponse = aiResponse.text.trim();
-
-      // Remove any function call artifacts that might leak through
-      // These patterns handle various formats the model might output
-      cleanResponse = cleanResponse
-        .replace(/<function=\w+>[\s\S]*?<\/function>/g, "") // <function=name>{...}</function>
-        .replace(/<function[^>]*>[\s\S]*?<\/function>/g, "") // <function ...>...</function>
-        .replace(/\[function[^\]]*\]/g, "") // [function ...]
-        .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "") // <tool_call>...</tool_call>
-        .replace(/<\|tool_call\|>[\s\S]*?<\|\/tool_call\|>/g, "") // <|tool_call|>...</|/tool_call|>
-        // Clean suggestion artifacts - multiple patterns for different formats
-        .replace(/["']?next_suggestions?["']?\s*[:=]\s*\[[^\]]*\],?/gi, "")
-        .replace(/["']?suggestions?["']?\s*[:=]\s*\[[^\]]*\],?/gi, "")
-        .replace(/["']?next[_\s]?step["']?\s*[:=]\s*["'][^"']*["'],?/gi, "")
-        // Clean JSON-like structures containing suggestions
-        .replace(/\{[^{}]*["']?next_suggestions?["']?\s*:[^{}]*\}/gi, "")
-        .replace(/\{[^{}]*["']?suggestions?["']?\s*:[^{}]*\}/gi, "")
-        // Clean standalone arrays that look like suggestions
-        .replace(
-          /\[\s*["'][^"']+["']\s*(,\s*["'][^"']+["']\s*)*\](?=\s*$|\s*\n)/gm,
-          ""
-        )
-        // Clean any remaining orphaned JSON punctuation
-        .replace(/^\s*[,:\[\]{}]+\s*$/gm, "")
-        // Clean multiple newlines
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-
-      // If the response is now empty or just whitespace, provide a fallback
-      if (!cleanResponse || cleanResponse.length < 2) {
-        cleanResponse = "hmm, let me think about that. try again?";
-      }
-
-      session.messages.push({ role: "assistant", content: cleanResponse });
-      await saveSession();
-
-      // Get suggestions - prefer AI-generated, fallback to defaults
-      const responseSuggestions =
-        session.suggestions.length > 0
-          ? session.suggestions
-          : DEFAULT_SUGGESTIONS[session.state] || [];
-
+      console.log("Calling ai.generate with tools...");
+      console.log("Current state:", session.state);
+      console.log("Message count:", messages.length);
       console.log(
-        "Returning state:",
-        session.state,
-        "with suggestions:",
-        responseSuggestions
+        "Pending verification:",
+        session.pending_verification ? "YES - returning user" : "NO - new user"
       );
 
-      return NextResponse.json({
-        assistant_message: cleanResponse,
-        server_state: {
-          session_id: session.session_id,
-          state: session.state,
-          completed: session.state === "COMPLETED",
+      // Use regular generate (streaming with Genkit tools is complex)
+      const response = await ai.generate({
+        model: googleAI.model("gemini-2.0-flash-exp"),
+        system: systemPrompt,
+        messages: messages,
+        tools,
+        config: {
+          temperature: 0.7,
         },
-        suggestions: responseSuggestions,
+        maxTurns: 3,
       });
+
+      const aiText = response.text?.trim() || "something went wrong, chale.";
+
+      // Save final message
+      session.messages.push({ role: "assistant", content: aiText });
+      await saveSession();
+
+      console.log("Response received, text length:", aiText.length);
+
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            const encoder = new TextEncoder();
+
+            // Send response in larger chunks - client handles the typing animation
+            let charIndex = 0;
+            const chunkSize = 100; // Larger chunks since client animates
+
+            const sendNextChunk = () => {
+              if (charIndex >= aiText.length) {
+                // Send final event with state info
+                const finalData = JSON.stringify({
+                  type: "done",
+                  server_state: {
+                    session_id: session.session_id,
+                    state: session.state,
+                    completed: session.state === "COMPLETED",
+                  },
+                  suggestions: DEFAULT_SUGGESTIONS[session.state] || [],
+                });
+                controller.enqueue(encoder.encode(`data: ${finalData}\n\n`));
+                controller.close();
+                return;
+              }
+
+              // Send larger chunks - client-side animation handles the natural feel
+              const chunk = aiText.slice(charIndex, charIndex + chunkSize);
+              charIndex += chunkSize;
+
+              const data = JSON.stringify({
+                type: "chunk",
+                text: chunk,
+              });
+              controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+
+              // Faster delivery - client handles animation timing
+              setTimeout(sendNextChunk, 10);
+            };
+
+            sendNextChunk();
+          },
+        }),
+        {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
+        }
+      );
     } catch (aiError) {
       console.error("AI error:", aiError);
 

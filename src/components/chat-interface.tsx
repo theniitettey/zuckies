@@ -32,6 +32,8 @@ interface Message {
   status?: "sending" | "sent" | "failed";
   originalInput?: string; // Store original input for retry
   isSecretPhrase?: boolean; // Flag for masking secret phrase display
+  isStreaming?: boolean; // Flag for showing typing animation
+  shouldAnimate?: boolean; // Flag for natural typing animation
 }
 
 interface SessionState {
@@ -120,12 +122,14 @@ const PHASE_NAMES: Record<string, string> = {
 // Dynamic input config based on state
 const INPUT_CONFIG: Record<
   string,
-  { type: string; placeholder: string; pattern?: string; inputMode?: string }
+  {
+    type: string;
+    placeholder: string;
+  }
 > = {
   AWAITING_EMAIL: {
-    type: "email",
+    type: "text",
     placeholder: "your@email.com",
-    inputMode: "email",
   },
   AWAITING_SECRET_PHRASE: {
     type: "password",
@@ -133,26 +137,26 @@ const INPUT_CONFIG: Record<
   },
   AWAITING_NAME: { type: "text", placeholder: "your name..." },
   AWAITING_WHATSAPP: {
-    type: "tel",
-    placeholder: "+1234567890",
-    inputMode: "tel",
+    type: "text",
+    placeholder: "+233 or country code + number",
   },
   AWAITING_GITHUB: {
-    type: "url",
-    placeholder: "github.com/username",
-    inputMode: "url",
+    type: "text",
+    placeholder: "username or full URL",
   },
   AWAITING_LINKEDIN: {
-    type: "url",
-    placeholder: "linkedin.com/in/username",
-    inputMode: "url",
+    type: "text",
+    placeholder: "profile URL or username",
   },
   AWAITING_PORTFOLIO: {
-    type: "url",
-    placeholder: "yoursite.com",
-    inputMode: "url",
+    type: "text",
+    placeholder: "your website URL",
   },
   AWAITING_TIME_COMMITMENT: { type: "text", placeholder: "e.g. 10 hours/week" },
+  COMPLETED: {
+    type: "text",
+    placeholder: "ask me anything about your journey...",
+  },
   DEFAULT: { type: "text", placeholder: "type here..." },
 };
 
@@ -397,6 +401,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           content: data.assistant_message,
           timestamp: Date.now(),
           status: "sent",
+          shouldAnimate: true,
         },
       ]);
     } catch {
@@ -459,6 +464,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           content: data.assistant_message,
           timestamp: Date.now(),
           status: "sent",
+          shouldAnimate: true,
         },
       ]);
     } catch {
@@ -525,6 +531,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           content: data.assistant_message,
           timestamp: Date.now(),
           status: "sent",
+          shouldAnimate: true, // Animate the welcome message
         },
       ]);
     } catch {
@@ -580,6 +587,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           content: data.assistant_message,
           timestamp: Date.now(),
           status: "sent",
+          shouldAnimate: true, // Animate welcome back message
         },
       ]);
     } catch {
@@ -597,10 +605,14 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
     if (!input.trim() || isLoading || !sessionState) return;
 
     const isSecretPhraseInput = sessionState.state === "AWAITING_SECRET_PHRASE";
+
+    // Send the input as-is - backend handles validation and URL construction
+    const messageContent = input.trim();
+
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
-      content: input,
+      content: messageContent,
       timestamp: Date.now(),
       status: "sending",
       originalInput: input,
@@ -611,6 +623,17 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
     setInput("");
     setIsLoading(true);
 
+    // Create assistant message placeholder for streaming
+    const assistantMessageId = crypto.randomUUID();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: Date.now(),
+      status: "sending",
+      shouldAnimate: true,
+    };
+
     try {
       const response = await fetchWithRetry("/api/chat", {
         method: "POST",
@@ -618,13 +641,9 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
         body: JSON.stringify({
           session_id: sessionState.session_id,
           message_id: userMessage.id,
-          user_input: userMessage.originalInput,
+          user_input: messageContent,
         }),
       });
-
-      const data = await response.json();
-      setSessionState(data.server_state);
-      setSuggestions(data.suggestions || []);
 
       // Mark user message as sent
       setMessages((prev) =>
@@ -633,16 +652,61 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
         )
       );
 
+      // Add empty assistant message for streaming with isStreaming flag
       setMessages((prev) => [
         ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: data.assistant_message,
-          timestamp: Date.now(),
-          status: "sent",
-        },
+        { ...assistantMessage, isStreaming: true },
       ]);
+
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let streamedContent = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+
+                if (data.type === "chunk") {
+                  streamedContent += data.text;
+                  // Update assistant message with streamed content
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMessageId
+                        ? { ...m, content: streamedContent, isStreaming: true }
+                        : m
+                    )
+                  );
+                } else if (data.type === "done") {
+                  // Update session state and suggestions
+                  setSessionState(data.server_state);
+                  setSuggestions(data.suggestions || []);
+
+                  // Mark assistant message as complete and stop streaming
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMessageId
+                        ? { ...m, status: "sent", isStreaming: false }
+                        : m
+                    )
+                  );
+                }
+              } catch (err) {
+                console.error("Failed to parse SSE data:", err);
+              }
+            }
+          }
+        }
+      }
     } catch {
       // Mark message as failed
       setMessages((prev) =>
@@ -650,6 +714,8 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           m.id === userMessage.id ? { ...m, status: "failed" } : m
         )
       );
+      // Remove failed assistant message
+      setMessages((prev) => prev.filter((m) => m.id !== assistantMessageId));
     } finally {
       setIsLoading(false);
       inputRef.current?.focus();
@@ -702,6 +768,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
             content: data.assistant_message,
             timestamp: Date.now(),
             status: "sent",
+            shouldAnimate: true,
           },
         ]);
       } else {
@@ -709,7 +776,12 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === messageId
-              ? { ...m, content: data.assistant_message, status: "sent" }
+              ? {
+                  ...m,
+                  content: data.assistant_message,
+                  status: "sent",
+                  shouldAnimate: true,
+                }
               : m
           )
         );
@@ -1066,7 +1138,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
 
                 {/* Giphy results or default memes */}
                 <div
-                  className={`grid gap-2 max-h-52 overflow-y-auto scrollbar-hide ${
+                  className={`grid gap-2 max-h-52 mb-2 overflow-y-auto scrollbar-hide ${
                     showGiphySearch && giphyResults.length > 0
                       ? "grid-cols-2 sm:grid-cols-4"
                       : "grid-cols-3 sm:grid-cols-5"
@@ -1156,32 +1228,31 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
               <Plus className="w-4 h-4" />
             </motion.button>
 
-            {/* Input */}
-            <input
-              ref={inputRef}
-              type={
-                (INPUT_CONFIG[sessionState.state] || INPUT_CONFIG.DEFAULT).type
-              }
-              inputMode={
-                (INPUT_CONFIG[sessionState.state] || INPUT_CONFIG.DEFAULT)
-                  .inputMode as React.HTMLAttributes<HTMLInputElement>["inputMode"]
-              }
-              autoComplete="on"
-              spellCheck={true}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                (INPUT_CONFIG[sessionState.state] || INPUT_CONFIG.DEFAULT)
-                  .placeholder
-              }
-              disabled={isLoading || sessionState.completed}
-              className="input-transparent flex-1 bg-transparent border-none outline-none px-2 py-2 sm:py-2.5 text-foreground placeholder:text-foreground/30 text-base min-w-0"
-            />
+            {/* Input wrapper */}
+            <div className="flex-1 flex items-center min-w-0">
+              <input
+                ref={inputRef}
+                type={
+                  (INPUT_CONFIG[sessionState.state] || INPUT_CONFIG.DEFAULT)
+                    .type
+                }
+                autoComplete="on"
+                spellCheck={true}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={
+                  (INPUT_CONFIG[sessionState.state] || INPUT_CONFIG.DEFAULT)
+                    .placeholder
+                }
+                disabled={isLoading}
+                className="input-transparent flex-1 bg-transparent border-none outline-none px-2 py-2 sm:py-2.5 text-foreground placeholder:text-foreground/30 text-base min-w-0"
+              />
+            </div>
 
             {/* Send button */}
             <motion.button
               type="submit"
-              disabled={isLoading || !input.trim() || sessionState.completed}
+              disabled={isLoading || !input.trim()}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.9 }}
               className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-orange-500 text-white flex items-center justify-center disabled:opacity-30 disabled:scale-100 transition-all flex-shrink-0"
@@ -1191,7 +1262,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           </div>
         </motion.form>
 
-        {/* Completion indicator */}
+        {/* Completion indicator and mentoring mode info */}
         <AnimatePresence>
           {sessionState.completed && (
             <motion.div
@@ -1230,6 +1301,9 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
               </motion.div>
               <p className="text-xs text-foreground/40 mt-2">
                 zuck will review your info and reach out soon
+              </p>
+              <p className="text-xs text-orange-400/60 mt-2">
+                keep texting to chat with your mentor
               </p>
             </motion.div>
           )}
