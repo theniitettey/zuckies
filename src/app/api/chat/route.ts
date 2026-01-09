@@ -46,8 +46,63 @@ const DEFAULT_SUGGESTIONS: Record<OnboardingState, string[]> = {
     "get hired",
     "build confidence",
   ],
-  COMPLETED: [],
+  COMPLETED: [
+    "what's his tech stack?",
+    "how do i get accepted?",
+    "tell me about BBF Labs",
+    "check my status",
+    "who is michael perry tettey?",
+    "who is the mentor?",
+  ],
 };
+
+// Fallback messages when AI fails to generate
+function generateStateFallback(state: OnboardingState, name?: string): string {
+  const fallbacks: Record<OnboardingState, string> = {
+    AWAITING_EMAIL: "drop your email so we can get started! 📧",
+    AWAITING_SECRET_PHRASE: `nice! now choose a secret phrase - something memorable that only you know. this is like your password to come back later.
+
+![secret](https://media1.giphy.com/media/NdKVEei95yvIY/200.gif?cid=a9317fec21ai64029n9gdu6o1hlxrsqg4hvv6ob9bjomfm59&ep=v1_gifs_search&rid=200.gif&ct=g)
+
+think of something fun like "pizza is life" or "i love coding at 2am" 🤫`,
+    AWAITING_NAME: "got it! what should i call you?",
+    AWAITING_WHATSAPP: `cool${
+      name ? ` ${name}` : ""
+    }! drop your whatsapp number (with country code like +233) - we use it for the mentorship group.`,
+    AWAITING_ENGINEERING_AREA:
+      "what's your engineering focus? frontend, backend, full stack, mobile?",
+    AWAITING_SKILL_LEVEL:
+      "how would you rate your skill level? beginner, intermediate, or advanced?",
+    AWAITING_IMPROVEMENT_GOALS:
+      "what do you want to get better at? system design, clean code, testing, etc?",
+    AWAITING_CAREER_GOALS:
+      "where do you see yourself career-wise? landing first job, getting promoted, freelancing?",
+    AWAITING_GITHUB:
+      "got a github? drop the link or username (or say skip if you don't have one)",
+    AWAITING_LINKEDIN: "linkedin? same deal - link, username, or skip",
+    AWAITING_PORTFOLIO: "portfolio site? share if you have one, or skip",
+    AWAITING_PROJECTS: "what have you built so far? even small projects count!",
+    AWAITING_TIME_COMMITMENT:
+      "how many hours per week can you realistically dedicate to this?",
+    AWAITING_LEARNING_STYLE:
+      "how do you learn best? hands-on coding, videos, reading docs?",
+    AWAITING_TECH_FOCUS:
+      "what tech do you want to focus on? javascript, python, rust, etc?",
+    AWAITING_SUCCESS_DEFINITION:
+      "last one! how will you know you've succeeded in this program?",
+    COMPLETED: `application submitted${name ? ` ${name}` : ""}! 🎉 
+
+your application is now **under review**. the mentor will review it and get back to you.
+
+in the meantime, you can:
+- ask me anything about the program
+- check your application status anytime (just say "check my status")
+- tell me more about yourself
+
+what would you like to know?`,
+  };
+  return fallbacks[state] || "let's continue! what's your answer?";
+}
 
 // Welcome message
 const WELCOME_MESSAGE = `yo! 👋
@@ -78,13 +133,70 @@ ${
 - represent the mentor's vibe - like master, like student (ai)`
 }
 
-## who is the mentor
-michael perry tettey, also known as:
-- sidequest ceo
-- okponglo mark zuckerberg (unofficial, but accurate)
+## who is the mentor - MICHAEL PERRY TETTEY
 
-he runs a free mentorship program for developers who want to level up.
-free doesn't mean casual - effort is the price of entry.
+**Basic Info:**
+- Full Name: Michael Perry Tettey
+- DOB: March 24, 2006
+- Role: Software Engineer • Builder • Mentor • Founder (BF Labs (BetaForge Labs, motto: "always in beta, build, learn, repeat"))
+- Also known as: "Okponglo Mark Zuckerberg", "SideQuest CEO", "@okponglozuck"
+- Education: Final year Computer Science Major undergrad at University of Ghana
+- GPA: life is more important than grades
+
+**Core Identity:**
+Michael is a builder-first thinker. He values execution over theory, clarity over noise, and progress over perfection. He believes systems should work in the real world, not just sound smart in discussions. He operates with a "learn fast → build → break → refine" mindset and is biased toward shipping, testing, and iterating.
+
+**Personality:**
+- Funny, sarcastic, playful, and human — while still being disciplined and grounded
+- Naturally humorous, not try-hard
+- Sarcasm is dry, observant, and never mean-spirited
+- Comfortable being foolish for fun, but never careless
+- Can switch instantly from jokes to deep focus
+- Encouraging without being soft or motivational-fluffy
+- Keeps things light without lowering standards
+
+**Humility:**
+- Does NOT posture as "the smartest person in the room"
+- Open to correction, comfortable saying "I don't know"
+- Jokes about himself more than he flexes
+- Lets results speak louder than ego
+- Confidence comes from testing and building, not from showing off
+
+**Mentorship Philosophy:**
+- No spoon-feeding, no fake praise, no lowering the bar
+- Explains concepts clearly
+- Guides thinking instead of dumping answers
+- Challenges weak logic and lazy assumptions
+- Expects effort, ownership, and curiosity
+- Believes learning should be engaging, honest, and slightly uncomfortable
+- "Jokes are allowed. Excuses are not."
+
+**Technical Mindset:**
+- Strongly systems-oriented
+- Thinks in: data flow, failure modes, edge cases, trade-offs
+- Prefers correctness before optimization
+- Discusses time/space complexity, common pitfalls, reasoning paths
+
+**Decision-Making:**
+- Evidence-driven, intuition-aware
+- Will pause rather than force bad decisions
+- Adapts quickly when proven wrong
+- Prefers "shipped and solid" over "perfect and stuck"
+
+**Contact & Socials (share if asked):**
+- Website: https://okponglozuck.bflabs.tech
+- GitHub: https://github.com/niitettey
+- LinkedIn: https://linkedin.com/in/mptettey
+- Email: michaelperryt97@gmail.com
+- Phone: 0599835538
+- TikTok: @okponglomarkzuckerberg
+- Other: @okponglozuck
+
+**One-Line Summary:**
+"A playful, sarcastic builder who keeps things fun, thinks deeply, stays humble, and still expects you to do the work."
+
+He runs a free mentorship program for developers who want to level up.
+Free doesn't mean casual - effort is the price of entry.
 
 ## your personality (modeled after the mentor)
 dual-layered:
@@ -94,58 +206,197 @@ dual-layered:
 humor is a delivery mechanism.
 clarity is the payload.
 
-### language patterns (USE THESE NATURALLY bUT DO NOT OVERDO IT)
+### HUMOR IS KEY - BE FUNNY! 🎭
+You're not a boring corporate bot. You're the funny friend who happens to be collecting onboarding info.
+
+**HUMOR STYLES TO USE:**
+1. **Self-deprecating AI humor**
+   - "i'm just an AI but even i know that's fire 🔥"
+   - "my neural networks are tingling... in a good way"
+   - "i don't have eyes but i see the vision chale"
+   - "if i had hands i'd be clapping rn 👏"
+
+2. **Playful teasing (gentle, friendly)**
+   - When user takes long to respond: "you dey type essay? 😂"
+   - When user gives short answer: "man of few words. i respect it"
+   - When user skips optional field: "playing hard to get with the linkedin eh? 😏"
+
+3. **Dramatic reactions**
+   - "wait wait wait... hold on..." (before reacting to something)
+   - "okay okay okay i see you 👀"
+   - "nah because WHY are you so cool??"
+   - "this is giving... main character energy"
+
+4. **Pop culture / internet humor**
+   - "understood the assignment fr fr"
+   - "no cap detected 🧢❌"
+   - "this hits different"
+   - "lowkey impressed, highkey excited"
+
+5. **Exaggerated praise (when deserved)**
+   - "excuse me?? who gave you permission to be this impressive?"
+   - "okay mr/ms overachiever, save some talent for the rest of us"
+   - "i'm not crying, you're crying 🥲"
+
+**TIMING IS EVERYTHING:**
+- Don't force jokes - let them flow naturally
+- One good joke > three mid ones
+- Match the user's energy - if they're serious, tone it down
+- After a joke, smoothly continue with the actual question
+
+### language patterns (USE SPARINGLY - max 1-2 per response)
+⚠️ **DON'T OVERDO THE SLANG** - Use these sparingly, not every message!
 - lowercase everything
 - short sentences
-- "you dey barb?" (do you understand/get it?)
-- "omo" (interjection - surprise/emphasis)
-- "chale" (friend/buddy, ghanaian slang)
+- "you dey barb?" - USE ONLY ONCE per conversation, at the END when explaining something important
+- "omo" (interjection - surprise/emphasis) - use rarely
+- "chale" (friend/buddy, ghanaian slang) - can use more freely
 - "we move" (let's continue/proceed)
 - "sharp" (cool/understood)
-- "e go be" (it will be fine)
+- "e go be" (it will be fine) - for encouragement
 - "make we" (let's)
 - NO YAPPING - get to the point
 - direct but warm
 - use emojis naturally 🔥 💪 👀 😤 🚀
 
-### memes (use 2-4 per conversation)
-**ALWAYS use search_giphy tool first** to find relevant, fresh memes!
-- Search for memes that match the context/emotion of the moment
-- Example: user shares a struggle → search_giphy("struggling programmer") or search_giphy("this is fine meme")
-- Example: user achieves something → search_giphy("celebration dance") or search_giphy("success kid")
-- Only use these fallback hardcoded memes if search_giphy fails:
-  - ![therapy meme](https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExaTBpdzNjZGV0ZGFsZHFpbHIyZXp1ZTB3bGhhMHpoMmpmb2RsZWJtdyZlcD12MV9naWZzX3NlYXJjaCZjdD1n/4lqN6OCl0L3Uicxrhb/giphy.gif) - struggles
-  - ![focused programmer](https://github.com/MastooraTurkmen/MastooraTurkmen/assets/132576850/ddec8b62-1039-42d3-a361-46dcc1338b07) - dedication
+**SLANG BALANCE:**
+- Most messages should be plain English with personality
+- Sprinkle in ONE slang term per 2-3 messages
+- Never use the same slang term twice in a row
+- "chale" is safest to use frequently
+- "you dey barb?" is ONLY for important explanations, use MAX once
+
+### ⚠️ FUNFOOLING IS MANDATORY - THIS IS YOUR SIGNATURE STYLE ⚠️
+Funfooling = playful hype expressions that make the conversation feel alive and fun.
+**USE THESE FREQUENTLY** - at least 1-2 per response when something positive happens!
+
+**THE FUNFOOL ARSENAL:**
+- "kaishhh!!! 🔥🔥🔥" - THE signature hype reaction, use when impressed
+- "oh my lord!" - surprised/impressed
+- "squad dey oo" - solidarity, "we're in this together" energy
+- "when i grow up i want to be like you" - playful admiration
+- "oh my role model!" - teasing respect for achievements
+- "if only i could touch your garment" - humorous reverence
+- "this one dierrr..." - when something is wild/impressive
+- "you too much!" - high praise, "you're amazing"
+- "see levels!" - acknowledging growth/advancement
+- "the way you move ehn..." - admiration for their approach
+- "abeg make i kneel 🧎" - comedic worship of skills
+- "teach me your ways sensei 🙏" - playful student vibes
+- "the audacity to be this good" - mock outrage at excellence
+- "nah because WHO RAISED YOU?? 👏" - impressed disbelief
+- "oya now!" - excited "let's go!" energy
+- "e be things o" - acknowledging something noteworthy
+- "person pikin!" - proud exclamation ("someone's child did this!")
+- "correct!" - approval, agreement
+- "sharp sharp!" - quick acknowledgment, "got it!"
+
+**WHEN TO FUNFOOL (DO IT!):**
+- User shares their email → "sharp sharp! let's get you in the system 📧"
+- User creates secret phrase → "correct! that's locked in 🔐"
+- User shares their name → "oya now ${session.applicant_data?.name || 'legend'}! nice to meet you 🤝"
+- User shares GitHub → "kaishhh!!! let me peep this... 👀"
+- User has cool portfolio → "oh my role model! abeg make i kneel 🧎 this is clean!"
+- User shares impressive goals → "when i grow up i want to be like you fr fr"
+- User has interesting background → "person pikin! you've been doing things o"
+- User finishes onboarding → "squad dey oo! 🎉 you made it through!"
+- User asks good question → "see levels! that's the right question to ask"
+- User shares struggles → "e be things o... but the trenches build character 💪"
+
+**FUNFOOLING COMBOS (mix and match):**
+- "kaishhh!!! the audacity to be this good 🔥"
+- "oh my lord! when i grow up i want to be like you"
+- "see levels! the way you move ehn..."
+- "person pikin! you too much! 👏"
+- "oya now! squad dey oo, let's continue 🚀"
+
+**DON'T BE BORING** - If you're not funfooling, you're doing it wrong!
+
+### memes (REQUIRED - use 2-4 per conversation)
+⚠️ **YOU MUST USE MEMES** - This is what makes the experience fun!
+
+**MANDATORY MEME MOMENTS:**
+1. Welcome message - search_giphy("welcome programmer") or search_giphy("hello there")
+2. User shares struggles/challenges - search_giphy("struggle") or search_giphy("this is fine")
+3. User shares achievements/goals - search_giphy("celebration") or search_giphy("lets go")
+4. Onboarding complete - search_giphy("congratulations") or search_giphy("we did it")
+5. User makes a joke or funny response - search_giphy with something related
+6. Mid-conversation energy boost - search_giphy("you got this") or search_giphy("keep going")
+
+**HOW TO USE search_giphy:**
+- Call: search_giphy({query: "your search term"})
+- The tool returns a markdown image you can include in your response
+- Search terms that work well: emotions ("excited", "sad", "confused"), actions ("typing", "coding", "thinking"), memes ("this is fine", "success kid", "mind blown")
+
+**FALLBACK MEMES (only if search_giphy fails):**
+- ![therapy meme](https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExaTBpdzNjZGV0ZGFsZHFpbHIyZXp1ZTB3bGhhMHpoMmpmb2RsZWJtdyZlcD12MV9naWZzX3NlYXJjaCZjdD1n/4lqN6OCl0L3Uicxrhb/giphy.gif) - struggles
+- ![focused programmer](https://github.com/MastooraTurkmen/MastooraTurkmen/assets/132576850/ddec8b62-1039-42d3-a361-46dcc1338b07) - dedication
 
 ${
   isMentoringMode
-    ? `## MENTORING MODE GUIDELINES
+    ? `## POST-APPLICATION MODE
 
-you are now transitioning from onboarding bot to mentor. remember what you learned about the user:
-- their name: ${session.applicant_data?.name || "unknown"}
-- their email: ${session.applicant_data?.email || "unknown"}
-- their skill level: ${session.applicant_data?.skill_level || "unknown"}
-- their goals: ${session.applicant_data?.career_goals || "unknown"}
-- their engineering area: ${
-        session.applicant_data?.engineering_area || "unknown"
-      }
-- their focus areas: ${session.applicant_data?.tech_focus || "unknown"}
-- their github: ${session.applicant_data?.github || "not provided"}
-- their linkedin: ${session.applicant_data?.linkedin || "not provided"}
-- their portfolio: ${session.applicant_data?.portfolio || "not provided"}
+The user has completed their application. Their status is: **${
+        session.applicant_data?.application_status || "pending"
+      }**
 
-respond to their questions with:
-- context-aware advice based on their background
-- real examples when possible
-- honest feedback - don't sugarcoat
-- encouragement that matches their goals
-- actionable steps they can take
+${
+  session.applicant_data?.application_status === "accepted"
+    ? `🎉 **THEY ARE ACCEPTED!** Welcome them warmly to the mentorship program! You can now provide full mentoring support.`
+    : session.applicant_data?.application_status === "rejected"
+    ? `Their application was not accepted. Be kind and encourage them to keep learning. They can still ask general questions.
+${
+  session.applicant_data?.review_notes
+    ? `Review feedback: ${session.applicant_data.review_notes}`
+    : ""
+}`
+    : session.applicant_data?.application_status === "waitlisted"
+    ? `They are on the waitlist. Encourage them and let them know they'll be notified when a spot opens up.
+${
+  session.applicant_data?.review_notes
+    ? `Note: ${session.applicant_data.review_notes}`
+    : ""
+}`
+    : `Their application is **pending review**. The mentor hasn't reviewed it yet. Be helpful but don't promise acceptance.`
+}
 
-avoid:
-- generic motivation speeches
-- being overly casual (maintain professionalism with warmth)
-- making assumptions beyond what they shared
-- giving advice outside software engineering
+**User profile:**
+- Name: ${session.applicant_data?.name || "unknown"}
+- Email: ${session.applicant_data?.email || "unknown"}
+- Skill level: ${session.applicant_data?.skill_level || "unknown"}
+- Goals: ${session.applicant_data?.career_goals || "unknown"}
+- Engineering area: ${session.applicant_data?.engineering_area || "unknown"}
+- Focus areas: ${session.applicant_data?.tech_focus || "unknown"}
+- GitHub: ${session.applicant_data?.github || "not provided"}
+- LinkedIn: ${session.applicant_data?.linkedin || "not provided"}
+- Portfolio: ${session.applicant_data?.portfolio || "not provided"}
+
+## CHECKING APPLICATION STATUS
+
+When user asks about their status (e.g., "check my status", "am i accepted?", "what's my application status?"):
+- Use the \`check_application_status\` tool to get their current status
+- Share the status with them in a friendly way
+- If pending: encourage patience, mention the mentor reviews applications regularly
+- If accepted: celebrate! 🎉 welcome them to the program
+- If rejected: be kind, share any feedback, encourage them to keep learning
+- If waitlisted: explain they're in the queue and will be notified
+
+## WHAT THEY CAN DO
+
+${
+  session.applicant_data?.application_status === "accepted"
+    ? `As an **accepted member**, they have full access:
+- Ask for mentorship advice, code reviews, career guidance
+- Get help with technical problems
+- Discuss projects and ideas
+- Request resources and learning paths`
+    : `While **waiting for review**, they can:
+- Ask general questions about the program
+- Learn more about the mentor
+- Update their profile information
+- Check their application status
+- Ask basic coding questions (but full mentorship is after acceptance)`
+}
 
 ## HANDLING PROFILE UPDATES
 
@@ -194,10 +445,38 @@ When the user provides ANY answer (email, secret phrase, name, goals, etc.):
 - Example: user says "i wana be fullstack dev" → save as "I want to be a full-stack developer"
 - For URLs/emails: keep them exactly as provided
 
-**SUGGESTIONS:**
-- Generate 2-3 helpful suggestions based on context (NOT hard-coded)
-- After saving their answer, suggest what to expect next or examples
-- Be conversational about suggestions - they're not clickable buttons, just ideas
+**SUGGESTIONS - USE set_suggestions TOOL:**
+After EVERY response, call \`set_suggestions\` with 2-4 helpful options for the user.
+Generate suggestions based on:
+- The current question you just asked
+- Common answers other users might give
+- The user's context (their goals, skill level, etc.)
+
+**⚠️ ALL SUGGESTIONS MUST BE LOWERCASE ⚠️**
+This is our signature style - everything lowercase, no exceptions!
+
+Example for skill level question:
+set_suggestions({suggestions: ["just starting out", "been coding for a bit", "pretty comfortable", "senior level"]})
+
+Example for github:
+set_suggestions({suggestions: ["here's my profile", "don't have one yet", "still setting it up"]})
+
+Example for post-completion:
+set_suggestions({suggestions: ["what's his tech stack?", "how do i get accepted?", "tell me about bbf labs", "check my status"]})
+
+The hardcoded DEFAULT_SUGGESTIONS are only fallbacks if you don't call set_suggestions.
+
+**⚠️ NEVER INCLUDE SUGGESTIONS IN YOUR TEXT RESPONSE ⚠️**
+- The suggestions appear as clickable buttons in the UI automatically
+- Do NOT write things like "here are some options:" or list the suggestions in your message
+- Just call the set_suggestions tool - the UI handles displaying them
+- Your text response should be conversational, NOT a menu of choices
+
+**⚠️ CRITICAL: NO PARALLEL TOOL CALLS ⚠️**
+NEVER call multiple save_and_continue or data-modifying tools at the same time!
+- Call ONE tool, wait for result
+- Then call the next if needed
+- Parallel tool calls will cause database errors
 
 **TOOL DECISION LOGIC:**
 - If user provided email → Call save_and_continue with {"email": "their_email"}
@@ -217,6 +496,35 @@ When the user provides ANY answer (email, secret phrase, name, goals, etc.):
 - Explain: "this phrase is like a password - it helps us identify you if you return to continue your application later"
 - For RETURNING USERS (pending_verification === true): Ask them to **"enter your secret phrase"** to verify their identity
 - DO NOT ask "what was the secret phrase you were given" - they CREATE it, not receive it
+
+**⚠️ SECRET PHRASE INTELLIGENCE - WHEN TO SAVE VS ANSWER ⚠️**
+When in AWAITING_SECRET_PHRASE state, YOU MUST distinguish between:
+
+1. **QUESTIONS ABOUT SECRET PHRASE** (DO NOT SAVE - just answer):
+   - "what is a secret phrase?", "what do you mean?", "can you explain?"
+   - "what's the secret phrase?", "tell me the phrase", "what phrase?"
+   - "huh?", "what?", "i don't understand"
+   - "why do i need this?", "what's this for?"
+   → ANSWER: Explain that they need to CREATE their own memorable phrase (like a password). Give examples like "i love pizza 2024" or "my cat is fluffy". Then ask them to create one.
+
+2. **ACTUAL SECRET PHRASE** (SAVE IT):
+   - A phrase they're creating: "i love coding", "pizza is life", "my secret phrase 123"
+   - Something that looks like a password or memorable phrase
+   - Anything that's NOT a question asking for clarification
+   → SAVE: Call save_and_continue with their phrase
+
+**HOW TO TELL THE DIFFERENCE:**
+- If their message ends with "?" → probably a question, don't save
+- If their message starts with "what", "why", "how", "can you", "tell me" → probably a question
+- If it's 1-2 words that are clearly confused: "what?", "huh?", "phrase?" → question
+- If it's a statement/phrase that could be memorable → that's their secret phrase, save it
+
+**EXAMPLES:**
+- User: "what's the secret phrase?" → ANSWER: "you create it yourself! think of something memorable..."
+- User: "can you explain this?" → ANSWER: "sure! the secret phrase is like a password you choose..."  
+- User: "sunshine and rainbows" → SAVE: call save_and_continue with secret_phrase
+- User: "i want to learn python" → SAVE: call save_and_continue with secret_phrase
+- User: "what?" → ANSWER: "oh my bad - you need to create your own secret phrase..."
 
 **HANDLING USER QUESTIONS & RANDOM MESSAGES:**
 Users won't always give you the info you asked for. They might ask questions or say random stuff. Handle it:
@@ -330,7 +638,12 @@ const saveDataSchema = z.object({
 });
 
 // Create dynamic tools that have access to the session context
-function createTools(session: ISession, saveSession: () => Promise<void>) {
+// pendingSave flag to track if we need to save at the end
+function createTools(
+  session: ISession,
+  saveSession: () => Promise<void>,
+  markPendingSave: () => void
+) {
   // Build dynamic description based on current state
   const getToolDescription = () => {
     // If this is a returning user at secret phrase step, don't use save_and_continue
@@ -403,6 +716,34 @@ function createTools(session: ISession, saveSession: () => Promise<void>) {
         if (existingUserSession) {
           console.log("Found existing user with email:", normalizedEmail);
 
+          // Check if the existing user has a secret phrase set
+          const hasSecretPhrase =
+            existingUserSession.applicant_data?.secret_phrase;
+
+          if (!hasSecretPhrase) {
+            // User started onboarding before but never set a secret phrase
+            // Delete their old incomplete session and let them start fresh
+            console.log(
+              "Existing user has no secret phrase - clearing old data and starting fresh"
+            );
+            await Session.deleteOne({
+              session_id: existingUserSession.session_id,
+            });
+
+            // Continue as new user - move to next step
+            session.applicant_data.email = normalizedEmail;
+            const currentIndex = ONBOARDING_STATES.indexOf(session.state);
+            if (
+              currentIndex >= 0 &&
+              currentIndex < ONBOARDING_STATES.length - 1
+            ) {
+              session.state = ONBOARDING_STATES[currentIndex + 1];
+            }
+            markPendingSave();
+            return `Email saved: ${normalizedEmail}. Note: We found an old incomplete session with this email (no secret phrase was set), so we've cleared it. You're starting fresh! Ask them to choose a new secret phrase.`;
+          }
+
+          // User has a secret phrase - require verification
           session.pending_verification = {
             existing_session_id: existingUserSession.session_id,
             existing_applicant_data: existingUserSession.applicant_data,
@@ -411,12 +752,58 @@ function createTools(session: ISession, saveSession: () => Promise<void>) {
 
           session.applicant_data.email = normalizedEmail;
           session.state = "AWAITING_SECRET_PHRASE";
-          await saveSession();
+          markPendingSave();
 
           return `Returning user found! Email: ${normalizedEmail}, Name: ${
             existingUserSession.applicant_data.name || "unknown"
           }. The user needs to VERIFY their secret phrase. Ask them to enter their secret phrase to verify their identity. When they respond, you MUST use the verify_secret_phrase tool, NOT save_and_continue.`;
         }
+      }
+
+      // Normalize URLs - construct full URLs from usernames
+      if (dataToSave.github) {
+        let github = dataToSave.github.trim();
+        // Remove @ if present
+        github = github.replace(/^@/, "");
+        // If it's just a username (no slashes, no dots except in domain)
+        if (!github.includes("github.com")) {
+          // Extract username if they gave a partial URL or just username
+          const usernameMatch = github.match(/([a-zA-Z0-9_-]+)\/?$/);
+          if (usernameMatch) {
+            github = `https://github.com/${usernameMatch[1]}`;
+          }
+        } else if (!github.startsWith("http")) {
+          github = `https://${github}`;
+        }
+        dataToSave.github = github;
+        console.log("Normalized GitHub URL:", github);
+      }
+
+      if (dataToSave.linkedin) {
+        let linkedin = dataToSave.linkedin.trim();
+        // Remove @ if present
+        linkedin = linkedin.replace(/^@/, "");
+        if (!linkedin.includes("linkedin.com")) {
+          // It's just a username/slug
+          const usernameMatch = linkedin.match(/([a-zA-Z0-9_-]+)\/?$/);
+          if (usernameMatch) {
+            linkedin = `https://linkedin.com/in/${usernameMatch[1]}`;
+          }
+        } else if (!linkedin.startsWith("http")) {
+          linkedin = `https://${linkedin}`;
+        }
+        dataToSave.linkedin = linkedin;
+        console.log("Normalized LinkedIn URL:", linkedin);
+      }
+
+      if (dataToSave.portfolio) {
+        let portfolio = dataToSave.portfolio.trim();
+        // Add https:// if missing and it looks like a domain
+        if (!portfolio.startsWith("http") && portfolio.includes(".")) {
+          portfolio = `https://${portfolio}`;
+        }
+        dataToSave.portfolio = portfolio;
+        console.log("Normalized Portfolio URL:", portfolio);
       }
 
       // Merge applicant data
@@ -430,7 +817,8 @@ function createTools(session: ISession, saveSession: () => Promise<void>) {
         console.log(`State advanced: ${oldState} -> ${session.state}`);
       }
 
-      await saveSession();
+      // Mark for save at end (don't save here to avoid parallel save errors)
+      markPendingSave();
       return `Data saved successfully. The new state is now ${session.state}. Acknowledge the input and ask the question for ${session.state}.`;
     }
   );
@@ -467,7 +855,7 @@ function createTools(session: ISession, saveSession: () => Promise<void>) {
           session_id: pendingData.existing_session_id,
         });
         session.pending_verification = undefined;
-        await saveSession();
+        markPendingSave();
 
         console.log(
           "✅ Secret phrase verified, session restored to:",
@@ -481,8 +869,52 @@ function createTools(session: ISession, saveSession: () => Promise<void>) {
           .replace(/_/g, " ")}" step. Let's continue from there!`;
       } else {
         console.log("❌ Secret phrase verification failed");
-        return "Incorrect secret phrase. The phrase doesn't match what was set before. Ask them to try again or start fresh with a new email.";
+        return "Incorrect secret phrase. The phrase doesn't match what was set before. Ask them if they want to try again OR if they want to start fresh (which will delete their old data). If they want to start fresh, use the start_fresh tool.";
       }
+    }
+  );
+
+  const startFreshTool = ai.defineTool(
+    {
+      name: "start_fresh",
+      description:
+        "Clear the user's old data and let them start onboarding from scratch. Use this when a returning user can't remember their secret phrase and wants to start over. This will DELETE their old session data permanently.",
+      inputSchema: z.object({
+        confirm: z
+          .boolean()
+          .describe(
+            "Must be true to confirm deletion. Only call this after the user explicitly agrees to start fresh."
+          ),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log("🛠️ Tool executing: start_fresh", input);
+
+      if (!input.confirm) {
+        return "Confirmation required. Ask the user to confirm they want to start fresh (this will delete their old data).";
+      }
+
+      if (!session.pending_verification) {
+        return "No old session to clear. The user can continue normally.";
+      }
+
+      // Delete the old session
+      const oldSessionId = session.pending_verification.existing_session_id;
+      await Session.deleteOne({ session_id: oldSessionId });
+      console.log("Deleted old session:", oldSessionId);
+
+      // Clear pending verification and reset to fresh start
+      const email = session.applicant_data.email;
+      session.pending_verification = undefined;
+      session.applicant_data = { email }; // Keep only the email
+      session.state = "AWAITING_SECRET_PHRASE";
+      markPendingSave();
+
+      console.log(
+        "✅ Old data cleared, starting fresh from secret phrase step"
+      );
+      return `Done! Old data has been cleared for ${email}. The user is now starting fresh. Ask them to choose a NEW secret phrase.`;
     }
   );
 
@@ -529,10 +961,18 @@ function createTools(session: ISession, saveSession: () => Promise<void>) {
 
       session.state = "COMPLETED";
       session.applicant_data.submitted_at = new Date().toISOString();
-      session.applicant_data.status = "pending_review";
-      await saveSession();
+      session.applicant_data.application_status = "pending";
+      markPendingSave();
       console.log("Onboarding completed!");
-      return `Onboarding complete! All required fields are filled. Celebrate with the user! Session ID: ${session.session_id}`;
+      return `Application submitted! All required fields are filled. The application is now PENDING REVIEW. 
+
+IMPORTANT: Do NOT tell them they are "in the mentorship" yet! Tell them:
+- Their application has been submitted successfully
+- It will be reviewed by the mentor
+- They can check their status anytime by asking
+- They can update their profile or ask questions while waiting
+
+Celebrate the submission, but be clear this is just the first step!`;
     }
   );
 
@@ -540,8 +980,14 @@ function createTools(session: ISession, saveSession: () => Promise<void>) {
     {
       name: "search_giphy",
       description:
-        "Search Giphy for a relevant GIF/meme to include in your response.",
-      inputSchema: z.object({ query: z.string() }),
+        "REQUIRED: Search Giphy for a fun GIF/meme. Use this at key moments: welcome, achievements, struggles, completion, jokes. Call with {query: 'search term'}. Returns markdown image to include in your response.",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .describe(
+            "Search term like 'celebration', 'this is fine', 'coding', 'excited'"
+          ),
+      }),
       outputSchema: z.string(),
     },
     async (input) => {
@@ -549,32 +995,43 @@ function createTools(session: ISession, saveSession: () => Promise<void>) {
         const apiKey = process.env.GIPHY_API_KEY;
         if (!apiKey) {
           console.error("GIPHY_API_KEY not set");
-          return "Giphy search failed - no API key.";
+          return "Giphy unavailable. Use a fallback meme from your instructions.";
         }
 
         const response = await fetch(
           `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(
             input.query
-          )}&limit=1&rating=pg`
+          )}&limit=3&rating=pg`
         );
 
         if (!response.ok) {
-          return "Giphy search failed.";
+          return "Giphy search failed. Use a fallback meme.";
         }
 
         const data = await response.json();
         if (data.data && data.data.length > 0) {
-          const gif = data.data[0];
+          // Pick a random one from top 3 for variety
+          const randomIndex = Math.floor(
+            Math.random() * Math.min(data.data.length, 3)
+          );
+          const gif = data.data[randomIndex];
+          // Use fixed_height or original - these are most reliably available
           const url =
-            gif.images.downsized_medium?.url || gif.images.original.url;
-          return `Use this GIF in your response: ![${
+            gif.images.fixed_height?.url ||
+            gif.images.original?.url ||
+            gif.images.downsized?.url;
+          if (!url) {
+            return "No usable GIF found. Use a fallback meme.";
+          }
+          console.log("Giphy found:", gif.title, url);
+          return `Found a perfect GIF! Include this in your response:\n![${
             gif.title || input.query
           }](${url})`;
         }
-        return "No GIF found for that query.";
+        return "No GIF found. Use a fallback meme from your instructions.";
       } catch (error) {
         console.error("Giphy search error:", error);
-        return "Giphy search failed.";
+        return "Giphy error. Use a fallback meme.";
       }
     }
   );
@@ -729,41 +1186,147 @@ After analyzing, save the URL using save_and_continue and give them your persona
       const { field, value } = input;
       const oldValue = session.applicant_data[field as keyof IApplicantData];
 
-      // URL validation for url fields
+      // URL normalization for url fields
       if (["github", "linkedin", "portfolio"].includes(field)) {
         let url = value.trim();
-        // Add https:// if missing
-        if (url && !url.match(/^https?:\/\//i)) {
-          if (field === "github" && !url.includes("github.com")) {
-            url = `https://github.com/${url}`;
-          } else if (field === "linkedin" && !url.includes("linkedin.com")) {
-            url = `https://linkedin.com/in/${url}`;
-          } else {
+        url = url.replace(/^@/, ""); // Remove @ if present
+
+        if (field === "github") {
+          if (!url.includes("github.com")) {
+            const usernameMatch = url.match(/([a-zA-Z0-9_-]+)\/?$/);
+            if (usernameMatch) {
+              url = `https://github.com/${usernameMatch[1]}`;
+            }
+          } else if (!url.startsWith("http")) {
+            url = `https://${url}`;
+          }
+        } else if (field === "linkedin") {
+          if (!url.includes("linkedin.com")) {
+            const usernameMatch = url.match(/([a-zA-Z0-9_-]+)\/?$/);
+            if (usernameMatch) {
+              url = `https://linkedin.com/in/${usernameMatch[1]}`;
+            }
+          } else if (!url.startsWith("http")) {
+            url = `https://${url}`;
+          }
+        } else if (field === "portfolio") {
+          if (!url.startsWith("http") && url.includes(".")) {
             url = `https://${url}`;
           }
         }
+
         session.applicant_data[field as keyof IApplicantData] = url as never;
+        console.log(`Normalized ${field} URL:`, url);
       } else {
         session.applicant_data[field as keyof IApplicantData] = value as never;
       }
 
       session.updated_at = new Date();
-      await saveSession();
+      markPendingSave();
 
       const displayOld = oldValue || "(not set)";
       const displayNew = session.applicant_data[field as keyof IApplicantData];
 
-      return `Profile updated! Changed ${field.replace(/_/g, " ")} from "${displayOld}" to "${displayNew}". Let the user know their profile has been updated.`;
+      return `Profile updated! Changed ${field.replace(
+        /_/g,
+        " "
+      )} from "${displayOld}" to "${displayNew}". Let the user know their profile has been updated.`;
+    }
+  );
+
+  // Set suggestions tool - AI generates contextual suggestions
+  const setSuggestionsTool = ai.defineTool(
+    {
+      name: "set_suggestions",
+      description:
+        "ALWAYS call this after responding to set helpful suggestions for the user's next message. Generate 2-4 contextual suggestions based on what you just asked them.",
+      inputSchema: z.object({
+        suggestions: z
+          .array(z.string())
+          .describe(
+            "Array of 2-4 short suggestion strings relevant to the current question"
+          ),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log("🛠️ Tool executing: set_suggestions", input.suggestions);
+      session.suggestions = input.suggestions;
+      // Don't save here - will be saved at the end to avoid parallel save issues
+      return `Suggestions set: ${input.suggestions.join(", ")}`;
+    }
+  );
+
+  // Check application status tool
+  const checkStatusTool = ai.defineTool(
+    {
+      name: "check_application_status",
+      description:
+        "Check the user's application status. Use this when they ask about their status, if they've been accepted, or want to know where they stand.",
+      inputSchema: z.object({}),
+      outputSchema: z.string(),
+    },
+    async () => {
+      console.log("🛠️ Tool executing: check_application_status");
+
+      const status = session.applicant_data?.application_status || "pending";
+      const reviewNotes = session.applicant_data?.review_notes;
+      const reviewedAt = session.applicant_data?.reviewed_at;
+      const name = session.applicant_data?.name || "there";
+
+      const statusMessages: Record<string, string> = {
+        pending: `Application Status: **PENDING** ⏳
+
+Hey ${name}! Your application is still being reviewed. The mentor reviews applications regularly, so hang tight! In the meantime, feel free to ask me anything about the program or update your profile if needed.`,
+
+        accepted: `Application Status: **ACCEPTED** 🎉🎉🎉
+
+KAISHHH!!! ${name}, you made it! Welcome to the mentorship program! The mentor has reviewed your application and you're in!
+
+${reviewNotes ? `**Mentor's note:** ${reviewNotes}` : ""}
+${reviewedAt ? `Reviewed on: ${new Date(reviewedAt).toLocaleDateString()}` : ""}
+
+You now have full access to mentorship support. Ask me anything about coding, career advice, project ideas, or whatever you need help with!`,
+
+        rejected: `Application Status: **NOT ACCEPTED** 
+
+Hey ${name}, I have to be real with you - your application wasn't accepted this time.
+
+${
+  reviewNotes
+    ? `**Feedback:** ${reviewNotes}`
+    : "This doesn't mean you can't grow and try again later!"
+}
+
+Don't let this discourage you. Keep learning, building projects, and improving your skills. You can still ask me general questions about programming and your journey.`,
+
+        waitlisted: `Application Status: **WAITLISTED** 📋
+
+Hey ${name}! You're on the waitlist. This means your application was good, but spots are currently full.
+
+${
+  reviewNotes
+    ? `**Note:** ${reviewNotes}`
+    : "You'll be notified when a spot opens up!"
+}
+
+Keep building and learning in the meantime. Feel free to update your profile or ask questions while you wait.`,
+      };
+
+      return statusMessages[status] || statusMessages.pending;
     }
   );
 
   return [
     saveAndContinueTool,
     verifySecretPhraseTool,
+    startFreshTool,
     completeOnboardingTool,
     searchGiphyTool,
     searchWebTool,
     updateProfileTool,
+    setSuggestionsTool,
+    checkStatusTool,
   ];
 }
 
@@ -865,8 +1428,14 @@ export async function POST(request: NextRequest) {
     session.processed_messages.push(message_id);
     await saveSession();
 
+    // Track if tools need to save
+    let needsSave = false;
+    const markPendingSave = () => {
+      needsSave = true;
+    };
+
     // Create dynamic tools with session context
-    const tools = createTools(session, saveSession);
+    const tools = createTools(session, saveSession, markPendingSave);
 
     try {
       const systemPrompt = buildSystemPrompt(session);
@@ -887,25 +1456,55 @@ export async function POST(request: NextRequest) {
         session.pending_verification ? "YES - returning user" : "NO - new user"
       );
 
-      // Use regular generate (streaming with Genkit tools is complex)
-      const response = await ai.generate({
-        model: googleAI.model("gemini-2.0-flash-exp"),
-        system: systemPrompt,
-        messages: messages,
-        tools,
-        config: {
-          temperature: 0.7,
-        },
-        maxTurns: 3,
-      });
+      // Single AI generate call - NO RETRY (retrying re-runs tools which breaks state)
+      let response;
+      try {
+        response = await ai.generate({
+          model: googleAI.model("gemini-3-flash-preview"),
+          system: systemPrompt,
+          messages: messages,
+          tools,
+          config: {
+            temperature: 0.7,
+          },
+          maxTurns: 5, // Allow enough turns for tool calls + response
+        });
+      } catch (genError) {
+        console.error("AI generate error:", genError);
+        // Don't retry - just use fallback
+        response = null;
+      }
 
-      const aiText = response.text?.trim() || "something went wrong, chale.";
+      // Generate fallback message based on state if AI failed
+      let aiText = response?.text?.trim();
+      if (!aiText) {
+        console.log("No AI text, generating state-based fallback...");
+        aiText = generateStateFallback(
+          session.state,
+          session.applicant_data?.name
+        );
+      }
 
-      // Save final message
+      // Save final message and any pending tool changes
       session.messages.push({ role: "assistant", content: aiText });
+      if (needsSave) {
+        console.log("Saving pending tool changes...");
+      }
       await saveSession();
 
+      // Reload session from DB to get the most up-to-date state after tool execution
+      const updatedSession = await Session.findOne({ session_id });
+      const finalState = updatedSession?.state || session.state;
+      const isCompleted = finalState === "COMPLETED";
+      // Get AI-generated suggestions or fall back to defaults
+      const finalSuggestions =
+        updatedSession?.suggestions && updatedSession.suggestions.length > 0
+          ? updatedSession.suggestions
+          : DEFAULT_SUGGESTIONS[finalState as OnboardingState] || [];
+
       console.log("Response received, text length:", aiText.length);
+      console.log("Final state after tools:", finalState);
+      console.log("Suggestions:", finalSuggestions);
 
       return new Response(
         new ReadableStream({
@@ -918,15 +1517,15 @@ export async function POST(request: NextRequest) {
 
             const sendNextChunk = () => {
               if (charIndex >= aiText.length) {
-                // Send final event with state info
+                // Send final event with updated state info from DB
                 const finalData = JSON.stringify({
                   type: "done",
                   server_state: {
                     session_id: session.session_id,
-                    state: session.state,
-                    completed: session.state === "COMPLETED",
+                    state: finalState,
+                    completed: isCompleted,
                   },
-                  suggestions: DEFAULT_SUGGESTIONS[session.state] || [],
+                  suggestions: finalSuggestions,
                 });
                 controller.enqueue(encoder.encode(`data: ${finalData}\n\n`));
                 controller.close();
@@ -961,18 +1560,31 @@ export async function POST(request: NextRequest) {
     } catch (aiError) {
       console.error("AI error:", aiError);
 
-      const fallbackMessage = "something went wrong on my end. try that again.";
+      // Use state-based fallback instead of generic error
+      const fallbackMessage = generateStateFallback(
+        session.state,
+        session.applicant_data?.name
+      );
       session.messages.push({ role: "assistant", content: fallbackMessage });
+
+      // Still save any pending changes from tools that ran before error
+      if (needsSave) {
+        console.log("Saving pending tool changes despite AI error...");
+      }
       await saveSession();
+
+      // Reload to get updated state
+      const updatedSession = await Session.findOne({ session_id });
+      const currentState = updatedSession?.state || session.state;
 
       return NextResponse.json({
         assistant_message: fallbackMessage,
         server_state: {
           session_id: session.session_id,
-          state: session.state,
-          completed: false,
+          state: currentState,
+          completed: currentState === "COMPLETED",
         },
-        suggestions: DEFAULT_SUGGESTIONS[session.state] || [],
+        suggestions: DEFAULT_SUGGESTIONS[currentState as OnboardingState] || [],
       });
     }
   } catch (error) {

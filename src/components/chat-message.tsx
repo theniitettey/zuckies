@@ -13,7 +13,6 @@ interface Message {
   timestamp: number;
   status?: "sending" | "sent" | "failed";
   originalInput?: string;
-  isSecretPhrase?: boolean;
   isStreaming?: boolean;
   shouldAnimate?: boolean; // Whether to animate this message
 }
@@ -22,7 +21,6 @@ interface ChatMessageProps {
   message: Message;
   onRetry?: (messageId: string) => void;
   isRetrying?: boolean;
-  maskContent?: boolean;
   onTypingComplete?: () => void;
 }
 
@@ -146,7 +144,6 @@ export default function ChatMessage({
   message,
   onRetry,
   isRetrying,
-  maskContent,
   onTypingComplete,
 }: ChatMessageProps) {
   const isUser = message.role === "user";
@@ -164,20 +161,7 @@ export default function ChatMessage({
     onTypingComplete
   );
 
-  // Mask content for secret phrases - show first char + *** + last char + random chars
-  const getMaskedContent = (content: string): string => {
-    if (content.length <= 2) return "••••••";
-    const firstChar = content[0];
-    const lastChar = content[content.length - 1];
-    const randomChars = "•★•◆•";
-    return `${firstChar}${"•".repeat(4)}${lastChar}${randomChars.slice(0, 3)}`;
-  };
-
-  const displayContent = maskContent
-    ? getMaskedContent(message.content)
-    : isUser
-    ? message.content
-    : typedContent;
+  const displayContent = isUser ? message.content : typedContent;
 
   return (
     <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>

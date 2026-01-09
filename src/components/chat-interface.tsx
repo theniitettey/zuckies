@@ -31,7 +31,7 @@ interface Message {
   timestamp: number;
   status?: "sending" | "sent" | "failed";
   originalInput?: string; // Store original input for retry
-  isSecretPhrase?: boolean; // Flag for masking secret phrase display
+
   isStreaming?: boolean; // Flag for showing typing animation
   shouldAnimate?: boolean; // Flag for natural typing animation
 }
@@ -132,7 +132,7 @@ const INPUT_CONFIG: Record<
     placeholder: "your@email.com",
   },
   AWAITING_SECRET_PHRASE: {
-    type: "password",
+    type: "text",
     placeholder: "create a memorable phrase...",
   },
   AWAITING_NAME: { type: "text", placeholder: "your name..." },
@@ -604,8 +604,6 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
     e.preventDefault();
     if (!input.trim() || isLoading || !sessionState) return;
 
-    const isSecretPhraseInput = sessionState.state === "AWAITING_SECRET_PHRASE";
-
     // Send the input as-is - backend handles validation and URL construction
     const messageContent = input.trim();
 
@@ -616,7 +614,6 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       timestamp: Date.now(),
       status: "sending",
       originalInput: input,
-      isSecretPhrase: isSecretPhraseInput,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -982,7 +979,6 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                   message={message}
                   onRetry={handleRetryMessage}
                   isRetrying={pendingRetry === message.id}
-                  maskContent={message.isSecretPhrase}
                 />
               </motion.div>
             ))}
@@ -1009,7 +1005,11 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute bottom-[60px] sm:bottom-[70px] left-0 right-0 z-20 px-3 sm:px-4"
+            className={`absolute left-0 right-0 z-30 px-3 sm:px-4 ${
+              sessionState?.completed
+                ? "bottom-[140px] sm:bottom-[150px]"
+                : "bottom-[60px] sm:bottom-[70px]"
+            }`}
           >
             <div className="max-w-2xl mx-auto overflow-hidden">
               {/* Marquee container */}
@@ -1270,7 +1270,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="text-center mt-3"
+              className="text-center mt-3 pointer-events-none"
             >
               <motion.div
                 animate={{ scale: [1, 1.05, 1] }}
@@ -1289,7 +1289,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                   🎉
                 </motion.span>
                 <span className="text-sm font-medium text-orange-400">
-                  onboarding complete!
+                  application submitted!
                 </span>
                 <motion.span
                   animate={{ rotate: [0, -10, 10, 0] }}
@@ -1300,10 +1300,10 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                 </motion.span>
               </motion.div>
               <p className="text-xs text-foreground/40 mt-2">
-                zuck will review your info and reach out soon
+                your application is under review
               </p>
-              <p className="text-xs text-orange-400/60 mt-2">
-                keep texting to chat with your mentor
+              <p className="text-xs text-orange-400/60 mt-1">
+                ask me anything while you wait!
               </p>
             </motion.div>
           )}

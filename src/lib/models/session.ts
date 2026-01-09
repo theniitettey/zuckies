@@ -30,6 +30,13 @@ export interface IMessage {
   timestamp?: Date;
 }
 
+// Application status type
+export type ApplicationStatus =
+  | "pending"
+  | "accepted"
+  | "rejected"
+  | "waitlisted";
+
 // Applicant data interface
 export interface IApplicantData {
   name?: string;
@@ -49,7 +56,11 @@ export interface IApplicantData {
   tech_focus?: string;
   success_definition?: string;
   submitted_at?: string;
-  status?: string;
+  // Application review fields (admin-managed)
+  application_status?: ApplicationStatus;
+  review_notes?: string; // Admin notes/feedback
+  reviewed_at?: string;
+  reviewed_by?: string;
 }
 
 // Session document interface
@@ -109,7 +120,15 @@ const ApplicantDataSchema = new Schema<IApplicantData>(
     tech_focus: String,
     success_definition: String,
     submitted_at: String,
-    status: String,
+    // Application review fields
+    application_status: {
+      type: String,
+      enum: ["pending", "accepted", "rejected", "waitlisted"],
+      default: "pending",
+    },
+    review_notes: String,
+    reviewed_at: String,
+    reviewed_by: String,
   },
   { _id: false }
 );
