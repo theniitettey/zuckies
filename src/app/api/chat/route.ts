@@ -37,7 +37,7 @@ const getGroqClient = () => {
 const getAIModel = () => {
   const groq = getGroqClient();
   // Using llama-3.3-70b-versatile for faster tool execution
-  return groq("llama-3.3-70b-versatile");
+  return groq("llama-3.1-8b-instant");
 };
 
 // Default suggestions for fallback - AI generates better contextual ones
