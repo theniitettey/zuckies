@@ -37,7 +37,6 @@ export const metadata: Metadata = {
   ],
   creator: "Michael Perry Tettey",
   publisher: "Zuckies",
-  metadataBase: new URL("https://zuckies.bflabs.tech"),
   openGraph: {
     type: "website",
     locale: "en_US",
