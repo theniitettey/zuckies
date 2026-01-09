@@ -16,10 +16,11 @@ const architectsDaughter = Architects_Daughter({
 });
 
 export const metadata: Metadata = {
-  title: "Mentorship Onboarding | Michael Perry Tettey",
+  title: "Zuckies | Mentorship Onboarding",
   description:
-    "Free software engineering mentorship by Michael Perry Tettey (Sidequest CEO). Real structure. No hand-holding. Effort is the price of entry.",
+    "Free software engineering mentorship by Michael Perry Tettey (Sidequest CEO x Okponglo Mark Zuckerberg). Real structure. No hand-holding. Effort is the price of entry.",
   keywords: [
+    "zuckies",
     "mentorship",
     "software engineering",
     "coding",
@@ -34,14 +35,14 @@ export const metadata: Metadata = {
     { name: "Michael Perry Tettey", url: "https://tiktok.com/@okponglo_zuck" },
   ],
   creator: "Michael Perry Tettey",
-  publisher: "Sidequest",
-  metadataBase: new URL("https://mentorship.sidequest.dev"),
+  publisher: "Zuckies",
+  metadataBase: new URL("https://zuckies.bflabs.tech"),
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://mentorship.sidequest.dev",
-    siteName: "Sidequest Mentorship",
-    title: "Free Software Engineering Mentorship | Sidequest CEO",
+    url: "https://zuckies.bflabs.tech",
+    siteName: "Zuckies Mentorship",
+    title: "Zuckies | Free Software Engineering Mentorship",
     description:
       "Level up your engineering. One conversation at a time. Free mentorship with real structure - no hand-holding.",
     images: [
@@ -49,13 +50,13 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Sidequest Mentorship - Free Software Engineering Mentorship",
+        alt: "Zuckies - Free Software Engineering Mentorship",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Free Software Engineering Mentorship | Sidequest CEO",
+    title: "Zuckies | Free Software Engineering Mentorship",
     description:
       "Level up your engineering. One conversation at a time. Free mentorship with real structure.",
     images: ["/og-image.png"],
@@ -75,19 +76,17 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "/icon-light-32x32.png",
-        media: "(prefers-color-scheme: light)",
-      },
-      {
-        url: "/icon-dark-32x32.png",
-        media: "(prefers-color-scheme: dark)",
-      },
-      {
         url: "/icon.svg",
         type: "image/svg+xml",
       },
     ],
-    apple: "/apple-icon.png",
+    apple: "/apple-touch-icon.svg",
+  },
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
   },
 };
 

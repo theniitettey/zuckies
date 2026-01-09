@@ -12,22 +12,30 @@ interface Message {
   timestamp: number;
   status?: "sending" | "sent" | "failed";
   originalInput?: string;
+  isSecretPhrase?: boolean;
 }
 
 interface ChatMessageProps {
   message: Message;
   onRetry?: (messageId: string) => void;
   isRetrying?: boolean;
+  maskContent?: boolean;
 }
 
 export default function ChatMessage({
   message,
   onRetry,
   isRetrying,
+  maskContent,
 }: ChatMessageProps) {
   const isUser = message.role === "user";
   const isFailed = message.status === "failed";
   const isSending = message.status === "sending";
+
+  // Mask content for secret phrases
+  const displayContent = maskContent
+    ? "•".repeat(Math.min(message.content.length, 12))
+    : message.content;
 
   return (
     <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
@@ -74,7 +82,7 @@ export default function ChatMessage({
                 ),
               }}
             >
-              {message.content}
+              {displayContent}
             </ReactMarkdown>
           </div>
         ) : (

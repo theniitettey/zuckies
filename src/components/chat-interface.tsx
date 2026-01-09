@@ -31,6 +31,7 @@ interface Message {
   timestamp: number;
   status?: "sending" | "sent" | "failed";
   originalInput?: string; // Store original input for retry
+  isSecretPhrase?: boolean; // Flag for masking secret phrase display
 }
 
 interface SessionState {
@@ -127,7 +128,7 @@ const INPUT_CONFIG: Record<
     inputMode: "email",
   },
   AWAITING_SECRET_PHRASE: {
-    type: "text",
+    type: "password",
     placeholder: "create a memorable phrase...",
   },
   AWAITING_NAME: { type: "text", placeholder: "your name..." },
@@ -323,8 +324,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       );
       const data = await response.json();
       setGiphyResults(data.data || []);
-    } catch (error) {
-      console.error("Giphy search failed:", error);
+    } catch {
       setGiphyResults([]);
     } finally {
       setIsSearchingGiphy(false);
@@ -394,8 +394,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           status: "sent",
         },
       ]);
-    } catch (error) {
-      console.error("Failed to send gif:", error);
+    } catch {
       // Mark message as failed
       setMessages((prev) =>
         prev.map((m) =>
@@ -457,8 +456,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           status: "sent",
         },
       ]);
-    } catch (error) {
-      console.error("Failed to send meme:", error);
+    } catch {
       // Mark message as failed
       setMessages((prev) =>
         prev.map((m) =>
@@ -513,7 +511,6 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       });
 
       const data = await response.json();
-      console.log("Init response:", data);
       setSessionState(data.server_state);
       setSuggestions(data.suggestions || []);
       setMessages([
@@ -525,8 +522,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           status: "sent",
         },
       ]);
-    } catch (error) {
-      console.error("Failed to initialize session:", error);
+    } catch {
       // Show error state and allow retry
       setSessionState({
         session_id: newSessionId,
@@ -581,8 +577,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           status: "sent",
         },
       ]);
-    } catch (error) {
-      console.error("Failed to resume session:", error);
+    } catch {
       // Fall back to fresh session
       startFreshSession();
     }
@@ -596,6 +591,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
     e.preventDefault();
     if (!input.trim() || isLoading || !sessionState) return;
 
+    const isSecretPhraseInput = sessionState.state === "AWAITING_SECRET_PHRASE";
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
@@ -603,6 +599,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       timestamp: Date.now(),
       status: "sending",
       originalInput: input,
+      isSecretPhrase: isSecretPhraseInput,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -621,7 +618,6 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       });
 
       const data = await response.json();
-      console.log("Chat response:", data);
       setSessionState(data.server_state);
       setSuggestions(data.suggestions || []);
 
@@ -642,8 +638,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           status: "sent",
         },
       ]);
-    } catch (error) {
-      console.error("Failed to send message:", error);
+    } catch {
       // Mark message as failed
       setMessages((prev) =>
         prev.map((m) =>
@@ -714,8 +709,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           )
         );
       }
-    } catch (error) {
-      console.error("Retry failed:", error);
+    } catch {
       // Mark as failed again
       setMessages((prev) =>
         prev.map((m) => (m.id === messageId ? { ...m, status: "failed" } : m))
@@ -911,6 +905,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                   message={message}
                   onRetry={handleRetryMessage}
                   isRetrying={pendingRetry === message.id}
+                  maskContent={message.isSecretPhrase}
                 />
               </motion.div>
             ))}
@@ -1157,10 +1152,8 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                 (INPUT_CONFIG[sessionState.state] || INPUT_CONFIG.DEFAULT)
                   .inputMode as React.HTMLAttributes<HTMLInputElement>["inputMode"]
               }
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
+              autoComplete="on"
+              spellCheck={true}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={
@@ -1168,7 +1161,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                   .placeholder
               }
               disabled={isLoading || sessionState.completed}
-              className="input-transparent flex-1 bg-transparent border-none outline-none px-2 py-2 sm:py-2.5 text-foreground placeholder:text-foreground/30 text-sm sm:text-base min-w-0"
+              className="input-transparent flex-1 bg-transparent border-none outline-none px-2 py-2 sm:py-2.5 text-foreground placeholder:text-foreground/30 text-base min-w-0"
             />
 
             {/* Send button */}
