@@ -3,6 +3,21 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Prevent mobile keyboard resize flash */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  position: fixed;
+  width: 100%;
+  touch-action: manipulation;
+}
+
 :root {
   /* Light theme - professional, calm, confident */
   --background: #fafafa;

@@ -337,7 +337,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       setGiphyResults([]);
       return;
     }
-    
+
     const timer = setTimeout(() => {
       if (showGiphySearch && giphySearch.trim()) {
         searchGiphy(giphySearch);

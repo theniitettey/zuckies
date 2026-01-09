@@ -706,13 +706,22 @@ export async function POST(request: NextRequest) {
         .replace(/\[function[^\]]*\]/g, "") // [function ...]
         .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "") // <tool_call>...</tool_call>
         .replace(/<\|tool_call\|>[\s\S]*?<\|\/tool_call\|>/g, "") // <|tool_call|>...</|/tool_call|>
-        .replace(/next_suggestions?\s*[:=]\s*\[[^\]]*\]/gi, "") // next_suggestions: [...] or next_suggestion = [...]
-        .replace(/"?next_suggestions?"?\s*[:=]\s*\[[^\]]*\]/gi, "") // "next_suggestions": [...]
-        .replace(/suggestions?\s*[:=]\s*\[[^\]]*\]/gi, "") // suggestions: [...]
-        .replace(/next[_\s]?step\s*[:=]\s*["'][^"']*["']/gi, "") // next_step: "..." or next step = '...'
-        .replace(/"?next[_\s]?step"?\s*[:=]\s*["'][^"']*["']/gi, "") // "next_step": "..."
-        .replace(/\{[\s\S]*?"?next_suggestions?"?\s*:[\s\S]*?\}/g, "") // {...next_suggestions:...}
-        .replace(/^\s*[\[\{][\s\S]*[\]\}]\s*$/gm, "") // standalone JSON objects/arrays
+        // Clean suggestion artifacts - multiple patterns for different formats
+        .replace(/["']?next_suggestions?["']?\s*[:=]\s*\[[^\]]*\],?/gi, "")
+        .replace(/["']?suggestions?["']?\s*[:=]\s*\[[^\]]*\],?/gi, "")
+        .replace(/["']?next[_\s]?step["']?\s*[:=]\s*["'][^"']*["'],?/gi, "")
+        // Clean JSON-like structures containing suggestions
+        .replace(/\{[^{}]*["']?next_suggestions?["']?\s*:[^{}]*\}/gi, "")
+        .replace(/\{[^{}]*["']?suggestions?["']?\s*:[^{}]*\}/gi, "")
+        // Clean standalone arrays that look like suggestions
+        .replace(
+          /\[\s*["'][^"']+["']\s*(,\s*["'][^"']+["']\s*)*\](?=\s*$|\s*\n)/gm,
+          ""
+        )
+        // Clean any remaining orphaned JSON punctuation
+        .replace(/^\s*[,:\[\]{}]+\s*$/gm, "")
+        // Clean multiple newlines
+        .replace(/\n{3,}/g, "\n\n")
         .trim();
 
       // If the response is now empty or just whitespace, provide a fallback
