@@ -16,6 +16,7 @@ const architectsDaughter = Architects_Daughter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://zuckies.bflabs.tech"),
   title: "Zuckies | Mentorship Onboarding",
   description:
     "Free software engineering mentorship by Michael Perry Tettey (Sidequest CEO x Okponglo Mark Zuckerberg). Real structure. No hand-holding. Effort is the price of entry.",
@@ -76,12 +77,36 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
+        url: "/favicon-32.png",
+        sizes: "32x32",
+        type: "image/png",
+      },
+      {
+        url: "/favicon-16.png",
+        sizes: "16x16",
+        type: "image/png",
+      },
+      {
         url: "/icon.svg",
         type: "image/svg+xml",
       },
     ],
-    apple: "/apple-touch-icon.svg",
+    apple: [
+      {
+        url: "/apple-touch-icon.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+    other: [
+      {
+        rel: "mask-icon",
+        url: "/icon.svg",
+        color: "#F97316",
+      },
+    ],
   },
+  manifest: "/manifest.json",
   viewport: {
     width: "device-width",
     initialScale: 1,
