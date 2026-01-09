@@ -36,7 +36,7 @@ const getGroqClient = () => {
 
 const getAIModel = () => {
   const groq = getGroqClient();
-  return groq("llama-3.3-70b-versatile");
+  return groq("openai/gpt-oss-120b");
 };
 
 // Default suggestions for fallback - AI generates better contextual ones
