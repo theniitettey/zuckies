@@ -1,6 +1,8 @@
 import type React from "react";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Architects_Daughter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
@@ -122,6 +124,8 @@ export default function RootLayout({
         >
           {children}
         </ThemeProvider>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
