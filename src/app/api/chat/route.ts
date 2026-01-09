@@ -36,7 +36,8 @@ const getGroqClient = () => {
 
 const getAIModel = () => {
   const groq = getGroqClient();
-  return groq("openai/gpt-oss-120b");
+  // Using llama-3.3-70b-versatile for faster tool execution
+  return groq("llama-3.3-70b-versatile");
 };
 
 // Default suggestions for fallback - AI generates better contextual ones
@@ -691,7 +692,7 @@ export async function POST(request: NextRequest) {
           content: msg.content,
         })),
         tools,
-        stopWhen: stepCountIs(5), // Allow multiple tool calls in sequence
+        stopWhen: stepCountIs(2), // Limit to 2 steps for faster response
         temperature: 0.7,
       });
 
