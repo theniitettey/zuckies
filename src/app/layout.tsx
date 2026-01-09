@@ -17,9 +17,22 @@ const architectsDaughter = Architects_Daughter({
 
 export const metadata: Metadata = {
   title: "Mentorship Onboarding | Michael Perry Tettey",
-  description: "Free software engineering mentorship by Michael Perry Tettey (Sidequest CEO). Real structure. No hand-holding. Effort is the price of entry.",
-  keywords: ["mentorship", "software engineering", "coding", "developer", "programming", "free mentorship", "sidequest ceo", "michael perry tettey", "okponglo zuck"],
-  authors: [{ name: "Michael Perry Tettey", url: "https://tiktok.com/@okponglo_zuck" }],
+  description:
+    "Free software engineering mentorship by Michael Perry Tettey (Sidequest CEO). Real structure. No hand-holding. Effort is the price of entry.",
+  keywords: [
+    "mentorship",
+    "software engineering",
+    "coding",
+    "developer",
+    "programming",
+    "free mentorship",
+    "sidequest ceo",
+    "michael perry tettey",
+    "okponglo zuck",
+  ],
+  authors: [
+    { name: "Michael Perry Tettey", url: "https://tiktok.com/@okponglo_zuck" },
+  ],
   creator: "Michael Perry Tettey",
   publisher: "Sidequest",
   metadataBase: new URL("https://mentorship.sidequest.dev"),
@@ -29,7 +42,8 @@ export const metadata: Metadata = {
     url: "https://mentorship.sidequest.dev",
     siteName: "Sidequest Mentorship",
     title: "Free Software Engineering Mentorship | Sidequest CEO",
-    description: "Level up your engineering. One conversation at a time. Free mentorship with real structure - no hand-holding.",
+    description:
+      "Level up your engineering. One conversation at a time. Free mentorship with real structure - no hand-holding.",
     images: [
       {
         url: "/og-image.png",
@@ -42,7 +56,8 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Free Software Engineering Mentorship | Sidequest CEO",
-    description: "Level up your engineering. One conversation at a time. Free mentorship with real structure.",
+    description:
+      "Level up your engineering. One conversation at a time. Free mentorship with real structure.",
     images: ["/og-image.png"],
     creator: "@okponglo_zuck",
   },
