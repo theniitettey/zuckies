@@ -11,6 +11,7 @@
   "dependencies": {
     "@ai-sdk/groq": "3.0.4",
     "@emotion/is-prop-valid": "latest",
+    "@genkit-ai/google-genai": "^1.27.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
@@ -49,6 +50,7 @@
     "date-fns": "4.1.0",
     "embla-carousel-react": "8.5.1",
     "framer-motion": "12.24.10",
+    "genkit": "^1.27.0",
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
     "mongoose": "^9.1.2",
