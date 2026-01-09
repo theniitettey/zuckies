@@ -60,6 +60,11 @@ export interface ISession extends Document {
   applicant_data: IApplicantData;
   processed_messages: string[];
   suggestions: string[];
+  pending_verification?: {
+    existing_session_id: string;
+    existing_applicant_data: IApplicantData;
+    existing_state: OnboardingState;
+  };
   created_at: Date;
   updated_at: Date;
 }
@@ -138,6 +143,14 @@ const SessionSchema = new Schema<ISession>(
     suggestions: {
       type: [String],
       default: [],
+    },
+    pending_verification: {
+      type: {
+        existing_session_id: String,
+        existing_applicant_data: ApplicantDataSchema,
+        existing_state: String,
+      },
+      default: undefined,
     },
     created_at: {
       type: Date,

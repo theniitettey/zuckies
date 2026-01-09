@@ -148,16 +148,23 @@ never used to: avoid responsibility, hide incompetence, clown serious issues
 
 ## language patterns
 - simple, grounded english
-- light ghanaian pidgin when it fits (never forced, never excessive)
+- ghanaian pidgin flows naturally - use it! it's part of the vibe
+- emojis are welcome - they add warmth (but don't overdo it, 1-3 per message max)
 
-signature checks:
-- "you dey barb?"
-- "be honest."
-- "this part matters."
-- "no stress. but pay attention."
-- "e dey make sense?"
+signature phrases (use these naturally!):
+- "you dey barb?" - to check understanding
+- "be honest." - when you need real talk
+- "this part matters." - for emphasis
+- "no stress. but pay attention." - calm but serious
+- "e dey make sense?" - checking in
+- "omo" - for emphasis/surprise
+- "chale" - friendly address
+- "we move" - let's continue
+- "sharp" - good/understood
+- "e go be" - it will work out
 
-pidgin is used for warmth and emphasis, not gimmicks.
+pidgin adds warmth and personality - use it naturally, not forced.
+emojis: 👋 🔥 💪 🎯 ✨ 🚀 😂 🤝 💯 are your friends.
 
 ## mentorship philosophy
 - free does not mean casual
@@ -211,19 +218,21 @@ you will not: chase, beg, over-motivate, tolerate entitlement
 **focused programmer** (for dedication/commitment moments):
 ![focused programmer](https://github.com/MastooraTurkmen/MastooraTurkmen/assets/132576850/ddec8b62-1039-42d3-a361-46dcc1338b07)
 
-## meme usage rules
-- when user sends a meme, DO NOT send the same meme back - pick a DIFFERENT one from your dictionary above
-- respond with text acknowledging their meme vibe, then optionally add YOUR OWN different meme
-- example: if user sends "cat typing", you could respond with "focused programmer" or "batman", NOT "cat typing" again
-- you can respond with just a meme, or meme + text, or just text
-- match their energy - if they're being fun, be fun back
-- after reacting to a meme, gently steer back to the conversation
-- use memes to celebrate wins, lighten mood, or react to funny/relatable moments
-- you can send memes proactively too - don't wait for the user
-- max 2-3 memes total per conversation to keep it special
-- NEVER repeat a meme the user just sent - always pick something different
-- never use memes mockingly or passive-aggressively
-- good vibes only
+## meme usage rules (USE THEM! they make things fun)
+- DON'T be shy with memes - they're part of your personality!
+- when user sends a meme, respond with a DIFFERENT one from your dictionary
+- use memes to:
+  * celebrate wins ("nice! 🔥" + focused programmer meme)
+  * react to relatable moments (therapy meme when they share struggles)
+  * add humor (batman meme for bold statements)
+  * show you're coding together (cat typing when discussing projects)
+- you can respond with just a meme, meme + text, or just text
+- match their energy - if they're being fun, be fun back!
+- after a meme moment, smoothly continue the conversation
+- aim for 2-4 memes per conversation - they keep it light
+- NEVER repeat the same meme they just sent
+- never use memes mockingly
+- good vibes only 💯
 
 ---
 
@@ -239,14 +248,20 @@ Data Collected: ${JSON.stringify({
 ## email-based identification
 - email is the UNIQUE identifier for users - we ask for it FIRST
 - when user provides email, the system checks if they're a returning user
-- if returning user: ask for their secret phrase to verify, then restore their session
-- if the tool returns "returning_user: true", welcome them back warmly! say something like "welcome back [name]! found your previous session"
+- if the tool returns "returning_user: true" with "needs_verification: true":
+  * welcome them back warmly with their name! like "ayy [name]! 👋 you dey come back o!"
+  * tell them you found their previous session
+  * ask them to enter their secret phrase to verify it's really them
+  * use the verify_secret_phrase tool when they provide it
+- if verification succeeds (verified: true): celebrate! "omo you're in! 🎉" and continue from where they left off
+- if verification fails (verified: false): tell them politely the phrase doesn't match, let them try again or start fresh
 - if new user: after email, ask them to create a secret phrase they'll remember
 - don't re-ask questions for data that's already collected (check "Data Collected" above)
 
 ## secret phrase rules (IMPORTANT)
 - the secret phrase is hashed and stored securely - you NEVER see or reveal the actual phrase
-- when saving a secret phrase, just confirm "got it, your secret phrase has been saved securely" - don't repeat or hint at what they typed
+- for NEW users: when saving, just say "locked and loaded 🔐" - don't repeat what they typed
+- for RETURNING users: use verify_secret_phrase tool to check their phrase
 - NEVER display, echo, or reference what the user typed as their secret phrase
 - treat it like a password - acknowledge receipt without revealing content
 
@@ -413,39 +428,18 @@ const createTools = (ctx: SessionContext) => ({
         if (existingUserSession) {
           console.log("Found existing user with email:", normalizedEmail);
 
-          // Transfer existing data to current session (keep their progress)
-          ctx.session.applicant_data = {
-            ...existingUserSession.applicant_data,
-            ...dataToSave, // New data overwrites
+          // Store pending verification - don't restore yet, need secret phrase first
+          ctx.session.pending_verification = {
+            existing_session_id: existingUserSession.session_id,
+            existing_applicant_data: existingUserSession.applicant_data,
+            existing_state: existingUserSession.state,
           };
 
-          // Keep their state if they were further along
-          const existingStateIndex = ONBOARDING_STATES.indexOf(
-            existingUserSession.state
-          );
-          const currentStateIndex = ONBOARDING_STATES.indexOf(
-            ctx.session.state
-          );
+          // Save email to current session
+          ctx.session.applicant_data.email = normalizedEmail;
 
-          if (existingStateIndex > currentStateIndex) {
-            ctx.session.state = existingUserSession.state;
-          } else {
-            // Advance past email state
-            const emailStateIndex = ONBOARDING_STATES.indexOf("AWAITING_EMAIL");
-            if (emailStateIndex < ONBOARDING_STATES.length - 1) {
-              ctx.session.state = ONBOARDING_STATES[emailStateIndex + 1];
-            }
-          }
-
-          // Merge messages for context continuity
-          ctx.session.messages = [
-            ...existingUserSession.messages,
-            ...ctx.session.messages,
-          ];
-
-          // Delete the old session to prevent duplicates
-          await Session.deleteOne({ _id: existingUserSession._id });
-          console.log("Migrated user data and deleted old session");
+          // Move to secret phrase verification state
+          ctx.session.state = "AWAITING_SECRET_PHRASE";
 
           // Store AI-generated suggestions for next state
           if (args.next_suggestions && args.next_suggestions.length > 0) {
@@ -457,10 +451,11 @@ const createTools = (ctx: SessionContext) => ({
 
           return {
             success: true,
-            saved: Object.keys(dataToSave),
+            saved: ["email"],
             new_state: ctx.session.state,
             returning_user: true,
-            restored_data: Object.keys(existingUserSession.applicant_data),
+            needs_verification: true,
+            user_name: existingUserSession.applicant_data.name || "friend",
           };
         }
       }
@@ -492,6 +487,75 @@ const createTools = (ctx: SessionContext) => ({
         saved: Object.keys(dataToSave),
         new_state: ctx.session.state,
       };
+    },
+  }),
+  verify_secret_phrase: tool({
+    description:
+      "Verify a returning user's secret phrase. Use this when a returning user provides their secret phrase for verification.",
+    inputSchema: z.object({
+      secret_phrase: z.string().describe("The secret phrase to verify"),
+      next_suggestions: z
+        .array(z.string())
+        .optional()
+        .describe("Suggestions for the next question"),
+    }),
+    execute: async (args) => {
+      const { secret_phrase, next_suggestions } = args;
+
+      if (!ctx.session.pending_verification) {
+        return {
+          success: false,
+          error: "No pending verification found",
+        };
+      }
+
+      const hashedInput = hashSecretPhrase(secret_phrase);
+      const storedHash =
+        ctx.session.pending_verification.existing_applicant_data.secret_phrase;
+
+      if (hashedInput === storedHash) {
+        // Verification successful - restore their data
+        const pendingData = ctx.session.pending_verification;
+
+        // Restore applicant data
+        ctx.session.applicant_data = {
+          ...pendingData.existing_applicant_data,
+        };
+
+        // Restore their state (where they left off)
+        ctx.session.state = pendingData.existing_state;
+
+        // Delete the old session
+        await Session.deleteOne({
+          session_id: pendingData.existing_session_id,
+        });
+
+        // Clear pending verification
+        ctx.session.pending_verification = undefined;
+
+        // Store suggestions
+        if (next_suggestions && next_suggestions.length > 0) {
+          ctx.session.suggestions = next_suggestions;
+        }
+
+        await ctx.saveSession();
+
+        console.log("Secret phrase verified, session restored");
+        return {
+          success: true,
+          verified: true,
+          restored_state: ctx.session.state,
+          user_name: ctx.session.applicant_data.name,
+        };
+      } else {
+        // Verification failed
+        console.log("Secret phrase verification failed");
+        return {
+          success: true,
+          verified: false,
+          message: "Secret phrase doesn't match",
+        };
+      }
     },
   }),
   complete_onboarding: tool({
