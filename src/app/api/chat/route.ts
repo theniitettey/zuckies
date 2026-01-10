@@ -2336,6 +2336,8 @@ Ask if they want to try again with the correct ${fieldConfig.label}, verify a di
           reviewed_at: applicant.reviewed_at,
         };
         session.state = "COMPLETED"; // Applicant records are for completed users
+        // Link session to the standalone Applicant record
+        session.applicant_email = applicant.email;
       }
 
       session.pending_recovery = undefined;
