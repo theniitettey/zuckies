@@ -18,6 +18,7 @@ import Session, {
   type OnboardingState,
   type ISession,
   type IApplicantData,
+  type IMessage,
 } from "@/lib/models/session";
 import Applicant, {
   VERIFIABLE_FIELDS,
@@ -57,9 +58,14 @@ const DEFAULT_SUGGESTIONS: Record<OnboardingState, string[]> = {
     "⭐ rate my experience",
     "check my status",
     "tell me about the program",
-    "let's have a meme war",
     "who is the mentor?",
-    "i have some feedback",
+  ],
+  FREE_CHAT: [
+    "let's have a meme war",
+    "help me with some code",
+    "tell me a joke",
+    "what can you help me with?",
+    "check my status",
   ],
 };
 
@@ -109,6 +115,9 @@ in the meantime, you can:
 ---
 
 before you go - how was the onboarding experience? rate it 1-5 stars and share any thoughts or suggestions. your feedback helps make this better! ✨`,
+    FREE_CHAT: `hey${name ? ` ${name}` : ""}! 👋 
+
+i'm here to chat, help with code, have meme wars, or whatever you need. what's on your mind?`,
   };
   return fallbacks[state] || "let's continue! what's your answer?";
 }
@@ -124,19 +133,23 @@ let's get started. first, *drop your email* - this is how we'll identify you if 
 
 // Build AI system prompt - Simplified to focus on personality and tool usage
 function buildSystemPrompt(session: ISession): string {
-  const isMentoringMode = session.state === "COMPLETED";
+  const isFreeChatMode =
+    session.state === "COMPLETED" || session.state === "FREE_CHAT";
+  const isJustCompleted = session.state === "COMPLETED"; // Just finished onboarding, ask for feedback
   return `you are the onboarding ai for michael perry tettey's software engineering mentorship program.
 
 ## your purpose
 ${
-  isMentoringMode
+  isFreeChatMode
     ? `- act as a mentor to help ${
         session.applicant_data?.name || "the user"
       } with their engineering journey
 - provide advice, feedback, and guidance based on what you know about them
 - ask clarifying questions to give better mentorship
 - be encouraging but honest - don't sugar coat
-- help them think through problems and challenges`
+- help them think through problems and challenges
+- BE FLEXIBLE - you can chat about anything, not just mentorship!
+- meme wars, coding help, random conversations - all good!`
     : `- guide new applicants through the onboarding process
 - collect their information for the mentorship
 - represent the mentor's vibe - like master, like student (ai)`
@@ -344,12 +357,25 @@ Funfooling = playful hype expressions that make the conversation feel alive and 
 - ![focused programmer](https://github.com/MastooraTurkmen/MastooraTurkmen/assets/132576850/ddec8b62-1039-42d3-a361-46dcc1338b07) - dedication
 
 ${
-  isMentoringMode
-    ? `## POST-APPLICATION MODE
+  isFreeChatMode
+    ? `## POST-APPLICATION MODE (FREE CHAT)
 
-The user has completed their application. Their status is: **${
+${
+  isJustCompleted
+    ? `**JUST COMPLETED ONBOARDING!** Ask for feedback on the onboarding experience (1-5 stars).
+
+`
+    : ``
+}The user has completed their application. Their status is: **${
         session.applicant_data?.application_status || "pending"
       }**
+Current state: ${session.state}
+
+**⚠️ CRITICAL: STATE MANAGEMENT**
+- COMPLETED state = just finished onboarding, ask for feedback ONCE then transition to FREE_CHAT
+- FREE_CHAT state = ongoing free interaction mode
+- After getting feedback OR if user ignores feedback request, use \`transition_to_free_chat\` tool to move them to FREE_CHAT state
+- In FREE_CHAT, DO NOT ask for feedback again - just chat freely!
 
 ${
   session.applicant_data?.application_status === "accepted"
@@ -378,9 +404,52 @@ ${
 - Goals: ${session.applicant_data?.career_goals || "unknown"}
 - Engineering area: ${session.applicant_data?.engineering_area || "unknown"}
 - Focus areas: ${session.applicant_data?.tech_focus || "unknown"}
+- Improvement goals: ${session.applicant_data?.improvement_goals || "unknown"}
+- Projects built: ${session.applicant_data?.projects || "unknown"}
+- Time commitment: ${session.applicant_data?.time_commitment || "unknown"}
+- Learning style: ${session.applicant_data?.learning_style || "unknown"}
+- Success definition: ${session.applicant_data?.success_definition || "unknown"}
 - GitHub: ${session.applicant_data?.github || "not provided"}
 - LinkedIn: ${session.applicant_data?.linkedin || "not provided"}
 - Portfolio: ${session.applicant_data?.portfolio || "not provided"}
+${
+  session.applicant_data?.submitted_at
+    ? `- Application submitted: ${new Date(
+        session.applicant_data.submitted_at
+      ).toLocaleDateString()}`
+    : ""
+}
+${
+  session.applicant_data?.reviewed_at
+    ? `- Reviewed on: ${new Date(
+        session.applicant_data.reviewed_at
+      ).toLocaleDateString()}`
+    : ""
+}
+
+**⚠️ IMPORTANT - REMEMBER THE USER:**
+You have full context about this user from their application. USE IT!
+- Reference their goals, projects, and interests naturally in conversation
+- If they mentioned specific tech (${
+        session.applicant_data?.tech_focus || "unknown"
+      }), relate discussions to it
+- If they're a ${
+        session.applicant_data?.skill_level || "unknown"
+      } level developer, adjust your explanations accordingly
+- They want to improve: ${
+        session.applicant_data?.improvement_goals || "unknown"
+      } - keep this in mind
+- Their definition of success: ${
+        session.applicant_data?.success_definition || "unknown"
+      }
+
+**PERSONALIZATION TIPS:**
+- Use their name (${
+        session.applicant_data?.name || "friend"
+      }) naturally - not every message, but enough to feel personal
+- Reference past conversations if relevant
+- Connect advice to their specific goals and context
+- Remember details they've shared - don't ask for info you already have!
 
 ## CHECKING APPLICATION STATUS
 
@@ -435,12 +504,19 @@ When user says something like "meme war", "let's battle with memes", "meme battl
 
 ## FLEXIBLE CHAT MODE
 
-**IMPORTANT:** You don't have to force users into any specific flow now. They completed onboarding!
+**IMPORTANT:** You're in FREE CHAT mode. Be natural and flexible!
 - If they want to chat casually, chat casually
 - If they ask random questions, answer them
 - If they want to discuss tech, discuss it
 - If they want to joke around, joke around
 - If they want to have a meme war, have one!
+- If they ask for coding help, help them!
+
+**DO NOT:**
+- Force them into any specific flow
+- Keep asking about onboarding stuff
+- Repeat the same suggestions endlessly
+- Get stuck in any state
 
 Be natural, be yourself (the funfooling AI), and let the conversation flow.
 
@@ -469,7 +545,7 @@ name, whatsapp, engineering_area, skill_level, improvement_goals, career_goals, 
 **NOT updatable (ask them to contact support):**
 email (used for identification)
 
-## � NAVIGATING STATES (change_state tool)
+## 🔀 NAVIGATING STATES (change_state tool)
 
 Users can jump to any onboarding step to update their info! Use the \`change_state\` tool when:
 
@@ -737,12 +813,63 @@ User: "wait you didn't say anything about my github"
 
 The tools handle saving to database and state management. Without tool calls, nothing persists.
 
+## 🧹 CLEARING STUCK STATES (clear_pending_states tool)
+
+**CRITICAL: Use this tool when states persist incorrectly!**
+
+If you notice:
+- User wants to do something else but you're stuck asking about secret phrase
+- User says "cancel", "never mind", "forget it", "stop", "do something else"
+- The suggestions keep changing but the conversation flow feels stuck
+- User is frustrated or confused about what's happening
+- You're in a recovery/verification flow but user wants out
+
+→ Call \`clear_pending_states\` to reset and let the user proceed with what they want.
+
+**Common stuck state scenarios:**
+1. User is in secret phrase verification but says "i want to have a meme war" → clear states, then start meme war
+2. User is in account recovery but says "actually let me try to remember" → clear recovery state
+3. User seems confused and conversation isn't flowing → clear states and ask what they want
+
+**Always clear pending states when user explicitly wants to:**
+- Change topic
+- Do something different
+- Cancel the current flow
+- Start over
+
+## 📝 CONVERSATION MEMORY (summarize_conversation tool)
+
+You can recall and summarize past conversation context! Use this when:
+- User asks "what have we talked about?", "summarize", "recap"
+- User asks "what did I say about X?" or "did we discuss Y?"
+- User returns after a break: "where were we?"
+- You need to recall something specific from earlier
+- User seems confused about prior context
+
+**How to use:**
+- \`summarize_conversation({})\` - general summary
+- \`summarize_conversation({focus: "projects"})\` - focus on specific topic
+- \`summarize_conversation({include_user_details: true})\` - include their profile info
+
+**Example:**
+User: "what did we talk about last time?"
+→ Call summarize_conversation() and share the highlights naturally
+
+**Pro tip:** Don't just dump the raw summary - paraphrase it naturally!
+Instead of: "You asked 5 questions..."
+Say: "we chatted about your backend projects and you asked about docker deployments!"
+
 ## CURRENT SESSION STATUS
 - Current state: ${session.state}
 - Is returning user pending verification: ${
         session.pending_verification
-          ? "YES - USE verify_secret_phrase TOOL"
+          ? "YES - USE verify_secret_phrase TOOL (or clear_pending_states if user wants out)"
           : "NO - Use save_and_continue"
+      }
+- Is in account recovery: ${
+        session.pending_recovery
+          ? "YES - verify recovery answers OR clear if user wants out"
+          : "NO"
       }
 ${
   session.pending_verification
@@ -770,7 +897,8 @@ After saving the user's response, tell them what's coming next. Here's the flow:
 - AWAITING_LEARNING_STYLE: "how do you learn best?" → next: tech focus
 - AWAITING_TECH_FOCUS: "what tech do you want to focus on?" → next: success definition (final!)
 - AWAITING_SUCCESS_DEFINITION: "how will you know you've succeeded?" → DONE!
-- COMPLETED: Celebrate and transition to mentoring mode!
+- COMPLETED: Ask for feedback, then use transition_to_free_chat to enter FREE_CHAT mode!
+- FREE_CHAT: Free interaction mode - chat about anything, meme wars, coding help, etc.
 
 ## State Flow (for your reference)
 1. Email → 2. Secret Phrase → 3. Name → 4. WhatsApp → 5. Engineering Area → 6. Skill Level → 7. Improvement Goals → 8. Career Goals → 9. GitHub (optional) → 10. LinkedIn (optional) → 11. Portfolio (optional) → 12. Projects → 13. Time Commitment → 14. Learning Style → 15. Tech Focus → 16. Success Definition → 17. Completed`
@@ -833,6 +961,7 @@ function createTools(
       AWAITING_TECH_FOCUS: "tech_focus",
       AWAITING_SUCCESS_DEFINITION: "success_definition",
       COMPLETED: "",
+      FREE_CHAT: "",
     };
 
     const currentField = stateFieldMap[session.state];
@@ -2757,6 +2886,318 @@ Present these naturally based on context!`;
     }
   );
 
+  // Transition to FREE_CHAT state - use after getting feedback or when user wants to just chat
+  const transitionToFreeChatTool = ai.defineTool(
+    {
+      name: "transition_to_free_chat",
+      description: `Transition the user from COMPLETED state to FREE_CHAT state. Use this tool:
+1. AFTER the user gives feedback on the onboarding experience
+2. When the user ignores the feedback request and wants to do something else
+3. When the user wants to chat freely, have meme wars, or explore
+4. When you detect the user is done with the "just completed" phase
+
+This allows free-flowing conversation without being stuck in "COMPLETED" state.`,
+      inputSchema: z.object({
+        reason: z
+          .string()
+          .optional()
+          .describe("Why transitioning to free chat (for logging)"),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log(
+        "🛠️ Tool executing: transition_to_free_chat",
+        input.reason || "no reason given"
+      );
+
+      if (session.state !== "COMPLETED" && session.state !== "FREE_CHAT") {
+        return "ERROR: Can only transition to FREE_CHAT from COMPLETED state. User must complete onboarding first.";
+      }
+
+      if (session.state === "FREE_CHAT") {
+        return "Already in FREE_CHAT state. Continue chatting freely!";
+      }
+
+      // Clear any pending states that might interfere
+      session.pending_verification = undefined;
+      session.pending_recovery = undefined;
+      session.pending_action = null;
+
+      session.state = "FREE_CHAT" as OnboardingState;
+      markPendingSave();
+
+      console.log("✅ Transitioned to FREE_CHAT state");
+      return `STATE_CHANGED: Transitioned to FREE_CHAT mode. The user is now in free interaction mode where they can:
+- Chat freely about anything
+- Have meme wars
+- Ask coding questions
+- Get mentorship advice (based on their application status)
+- Check their application status
+- Update their profile
+
+Don't force any specific flow - just be natural and helpful!`;
+    }
+  );
+
+  // Clear pending states tool - helps fix stuck states
+  const clearPendingStatesTool = ai.defineTool(
+    {
+      name: "clear_pending_states",
+      description: `Clear any pending verification, recovery, or action states that might be stuck. Use this when:
+1. User says "cancel", "never mind", "forget it", "stop"
+2. User wants to do something else but the state seems stuck
+3. Suggestions keep changing but state doesn't match user intent
+4. User is confused about what's happening
+5. User explicitly says they want to start over or reset
+
+This helps fix buggy state persistence issues.`,
+      inputSchema: z.object({
+        reason: z.string().optional().describe("Why clearing pending states"),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log(
+        "🛠️ Tool executing: clear_pending_states",
+        input.reason || "user requested"
+      );
+
+      const hadPendingVerification = !!session.pending_verification;
+      const hadPendingRecovery = !!session.pending_recovery;
+      const hadPendingAction = !!session.pending_action;
+
+      // Clear all pending states
+      session.pending_verification = undefined;
+      session.pending_recovery = undefined;
+      session.pending_action = null;
+
+      markPendingSave();
+
+      const clearedItems = [];
+      if (hadPendingVerification)
+        clearedItems.push("secret phrase verification");
+      if (hadPendingRecovery) clearedItems.push("account recovery");
+      if (hadPendingAction) clearedItems.push("pending action");
+
+      if (clearedItems.length === 0) {
+        return "No pending states to clear. The session is clean.";
+      }
+
+      console.log("✅ Cleared pending states:", clearedItems.join(", "));
+      return `STATES_CLEARED: Cleared ${clearedItems.join(", ")}. 
+
+Current state: ${session.state}
+User: ${session.applicant_data?.name || "unknown"}
+
+Ask the user what they'd like to do now. Be helpful and don't reference the cleared states unless relevant.`;
+    }
+  );
+
+  // Summarize conversation tool - helps recall past discussions
+  const summarizeConversationTool = ai.defineTool(
+    {
+      name: "summarize_conversation",
+      description: `Generate a summary of the conversation history. Use this when:
+1. User asks "what have we talked about?", "summarize our chat", "recap"
+2. User seems confused about prior context
+3. User asks "what did I say about X?"
+4. The conversation is getting long and you need to recall key points
+5. User returns after a break and asks "where were we?"
+6. You want to reference something from earlier in the conversation
+
+This helps maintain continuity and shows you remember the user.`,
+      inputSchema: z.object({
+        focus: z
+          .string()
+          .optional()
+          .describe(
+            "Optional: specific topic or aspect to focus the summary on"
+          ),
+        include_user_details: z
+          .boolean()
+          .optional()
+          .describe("Include summary of user profile/application details"),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log("🛠️ Tool executing: summarize_conversation", input);
+
+      const messages = session.messages;
+      const userProfile = session.applicant_data;
+      const focus = input.focus?.toLowerCase();
+
+      // Build conversation summary
+      const totalMessages = messages.length;
+      const userMessages = messages.filter((m) => m.role === "user");
+      const assistantMessages = messages.filter((m) => m.role === "assistant");
+
+      // Extract key topics from conversation
+      const keyTopics: string[] = [];
+      const userQuestions: string[] = [];
+      const mentionedTech: string[] = [];
+
+      // Common tech keywords to look for
+      const techKeywords = [
+        "javascript",
+        "typescript",
+        "python",
+        "react",
+        "node",
+        "api",
+        "database",
+        "css",
+        "html",
+        "git",
+        "docker",
+        "aws",
+        "backend",
+        "frontend",
+        "fullstack",
+        "mobile",
+        "flutter",
+        "rust",
+        "go",
+        "java",
+        "c++",
+        "sql",
+        "mongodb",
+        "postgres",
+        "redis",
+        "nextjs",
+        "vue",
+        "angular",
+        "svelte",
+      ];
+
+      for (const msg of userMessages) {
+        const content = msg.content.toLowerCase();
+
+        // Detect questions
+        if (
+          content.includes("?") ||
+          content.startsWith("how") ||
+          content.startsWith("what") ||
+          content.startsWith("why") ||
+          content.startsWith("can")
+        ) {
+          userQuestions.push(
+            msg.content.slice(0, 100) + (msg.content.length > 100 ? "..." : "")
+          );
+        }
+
+        // Detect tech mentions
+        for (const tech of techKeywords) {
+          if (content.includes(tech) && !mentionedTech.includes(tech)) {
+            mentionedTech.push(tech);
+          }
+        }
+
+        // Detect topic keywords
+        if (
+          content.includes("meme") ||
+          content.includes("war") ||
+          content.includes("battle")
+        ) {
+          if (!keyTopics.includes("meme war")) keyTopics.push("meme war");
+        }
+        if (content.includes("project") || content.includes("building")) {
+          if (!keyTopics.includes("projects")) keyTopics.push("projects");
+        }
+        if (content.includes("career") || content.includes("job")) {
+          if (!keyTopics.includes("career")) keyTopics.push("career");
+        }
+        if (content.includes("learn") || content.includes("study")) {
+          if (!keyTopics.includes("learning")) keyTopics.push("learning");
+        }
+        if (content.includes("help") || content.includes("stuck")) {
+          if (!keyTopics.includes("getting help"))
+            keyTopics.push("getting help");
+        }
+      }
+
+      // Build the summary
+      let summary = `## CONVERSATION SUMMARY\n\n`;
+
+      // User profile section (if requested)
+      if (input.include_user_details && userProfile?.name) {
+        summary += `**User:** ${userProfile.name}\n`;
+        summary += `**Email:** ${userProfile.email || "not set"}\n`;
+        summary += `**Status:** ${
+          userProfile.application_status || "pending"
+        }\n`;
+        if (userProfile.engineering_area)
+          summary += `**Focus:** ${userProfile.engineering_area}\n`;
+        if (userProfile.skill_level)
+          summary += `**Level:** ${userProfile.skill_level}\n`;
+        if (userProfile.tech_focus)
+          summary += `**Tech:** ${userProfile.tech_focus}\n`;
+        summary += `\n`;
+      }
+
+      // Conversation stats
+      summary += `**Conversation Stats:**\n`;
+      summary += `- Total messages: ${totalMessages}\n`;
+      summary += `- User messages: ${userMessages.length}\n`;
+      summary += `- Session state: ${session.state}\n\n`;
+
+      // Topics discussed
+      if (keyTopics.length > 0) {
+        summary += `**Topics Discussed:** ${keyTopics.join(", ")}\n\n`;
+      }
+
+      // Tech mentioned
+      if (mentionedTech.length > 0) {
+        summary += `**Tech Mentioned:** ${mentionedTech.join(", ")}\n\n`;
+      }
+
+      // Key questions (last 5)
+      if (userQuestions.length > 0) {
+        summary += `**Recent Questions from User:**\n`;
+        const recentQuestions = userQuestions.slice(-5);
+        for (const q of recentQuestions) {
+          summary += `- ${q}\n`;
+        }
+        summary += `\n`;
+      }
+
+      // Last few exchanges (for context)
+      summary += `**Recent Context (last 3 exchanges):**\n`;
+      const recentMessages = messages.slice(-6);
+      for (const msg of recentMessages) {
+        const role = msg.role === "user" ? "User" : "AI";
+        const preview =
+          msg.content.slice(0, 150) + (msg.content.length > 150 ? "..." : "");
+        summary += `- ${role}: ${preview}\n`;
+      }
+
+      // If focus was provided, add focused analysis
+      if (focus) {
+        summary += `\n**Focused on "${focus}":**\n`;
+        const relevantMessages = messages.filter((m) =>
+          m.content.toLowerCase().includes(focus)
+        );
+        if (relevantMessages.length > 0) {
+          summary += `Found ${relevantMessages.length} messages mentioning "${focus}".\n`;
+          const lastRelevant = relevantMessages.slice(-2);
+          for (const msg of lastRelevant) {
+            const role = msg.role === "user" ? "User" : "AI";
+            const preview =
+              msg.content.slice(0, 150) +
+              (msg.content.length > 150 ? "..." : "");
+            summary += `- ${role}: ${preview}\n`;
+          }
+        } else {
+          summary += `No specific mentions of "${focus}" found in conversation.\n`;
+        }
+      }
+
+      console.log("✅ Generated conversation summary");
+      return summary;
+    }
+  );
+
   return [
     saveAndContinueTool,
     verifySecretPhraseTool,
@@ -2781,6 +3222,9 @@ Present these naturally based on context!`;
     extendSessionTool,
     startMemeWarTool,
     listCapabilitiesTool,
+    transitionToFreeChatTool,
+    clearPendingStatesTool,
+    summarizeConversationTool,
   ];
 }
 
@@ -2826,17 +3270,107 @@ export async function POST(request: NextRequest) {
 
     let session = await Session.findOne({ session_id });
 
+    // For returning users with email in token, try to restore their full profile
+    let isReturningUser = false;
+    let applicantProfile: IApplicant | null = null;
+
+    if (!session && email && !email.includes("@sessions.local")) {
+      // Check if this email has an existing Applicant record (completed users)
+      applicantProfile = await Applicant.findOne({
+        email: email.toLowerCase().trim(),
+      });
+
+      // Also check for existing session with this email
+      const existingSession = await Session.findOne({
+        "applicant_data.email": email.toLowerCase().trim(),
+      });
+
+      if (applicantProfile || existingSession) {
+        isReturningUser = true;
+        console.log("Returning user detected via email:", email);
+
+        // Use existing session if found, or create new one with restored data
+        if (existingSession) {
+          session = existingSession;
+          // Update session_id to the new one for this browser session
+          session.session_id = session_id;
+          console.log("Restored existing session for returning user");
+        }
+      }
+    }
+
     if (!session) {
+      // Build applicant_data from Applicant record if available (returning user)
+      const restoredData: Partial<IApplicantData> = email ? { email } : {};
+      let initialState: OnboardingState = "AWAITING_EMAIL";
+      let recentMessages: IMessage[] = [];
+
+      if (applicantProfile) {
+        // Restore full profile from Applicant model
+        restoredData.email = applicantProfile.email;
+        restoredData.secret_phrase = applicantProfile.secret_phrase_hash;
+        restoredData.name = applicantProfile.name;
+        restoredData.whatsapp = applicantProfile.whatsapp;
+        restoredData.engineering_area = applicantProfile.engineering_area;
+        restoredData.skill_level = applicantProfile.skill_level;
+        restoredData.improvement_goals = applicantProfile.improvement_goals;
+        restoredData.career_goals = applicantProfile.career_goals;
+        restoredData.github = applicantProfile.github;
+        restoredData.linkedin = applicantProfile.linkedin;
+        restoredData.portfolio = applicantProfile.portfolio;
+        restoredData.projects = applicantProfile.projects;
+        restoredData.time_commitment = applicantProfile.time_commitment;
+        restoredData.learning_style = applicantProfile.learning_style;
+        restoredData.tech_focus = applicantProfile.tech_focus;
+        restoredData.success_definition = applicantProfile.success_definition;
+        restoredData.application_status = applicantProfile.application_status;
+        restoredData.submitted_at = applicantProfile.submitted_at;
+        restoredData.review_notes = applicantProfile.review_notes;
+        restoredData.reviewed_at = applicantProfile.reviewed_at;
+
+        // Returning completed user goes to FREE_CHAT
+        initialState = "FREE_CHAT";
+        console.log("Restored profile from Applicant model, state: FREE_CHAT");
+
+        // Try to load recent messages from their most recent session
+        try {
+          const recentSession = await Session.findOne({
+            "applicant_data.email": applicantProfile.email,
+          })
+            .sort({ updated_at: -1 })
+            .limit(1);
+
+          if (recentSession && recentSession.messages.length > 0) {
+            // Take the last 10 messages for context (not too many to overwhelm)
+            recentMessages = recentSession.messages.slice(-10);
+            console.log(
+              `Loaded ${recentMessages.length} recent messages from previous session`
+            );
+          }
+        } catch (err) {
+          console.log("Could not load recent messages:", err);
+        }
+      }
+
       session = new Session({
         session_id,
-        state: "AWAITING_EMAIL",
-        messages: [],
-        applicant_data: email ? { email } : {},
+        state: initialState,
+        messages: recentMessages, // Include recent messages for context
+        applicant_data: restoredData,
+        applicant_email: applicantProfile?.email,
         processed_messages: [],
         suggestions: [],
       });
       await session.save();
-      console.log("New session created:", session_id);
+      console.log(
+        "New session created:",
+        session_id,
+        "returning:",
+        isReturningUser,
+        "with",
+        recentMessages.length,
+        "context messages"
+      );
     }
 
     // Helper function to generate token for response
@@ -2859,13 +3393,19 @@ export async function POST(request: NextRequest) {
     // Handle duplicate messages
     if (session.processed_messages.includes(message_id)) {
       const lastMessage = session.messages[session.messages.length - 1];
+      const isCompleted =
+        session.state === "COMPLETED" || session.state === "FREE_CHAT";
       return NextResponse.json({
         assistant_message: lastMessage?.content || "try again.",
         token: generateResponseToken(),
         server_state: {
           session_id: session.session_id,
           state: session.state,
-          completed: session.state === "COMPLETED",
+          completed: isCompleted,
+          application_status: isCompleted
+            ? session.applicant_data?.application_status
+            : undefined,
+          user_name: isCompleted ? session.applicant_data?.name : undefined,
         },
         suggestions:
           session.suggestions.length > 0
@@ -2874,19 +3414,86 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Handle initialization
+    // Handle initialization - check if this is a returning completed user
     if (action === "init" || session.messages.length === 0) {
       session.processed_messages.push(message_id);
-      session.messages.push({ role: "assistant", content: WELCOME_MESSAGE });
+
+      // Check if this is a completed/free_chat user returning - recognize them!
+      const isCompletedUser =
+        session.state === "COMPLETED" || session.state === "FREE_CHAT";
+      const userName = session.applicant_data?.name;
+      const userProfile = session.applicant_data;
+
+      let welcomeMsg = WELCOME_MESSAGE;
+      if (isCompletedUser && userName) {
+        // Build a personalized welcome based on their profile
+        const statusEmoji =
+          userProfile?.application_status === "accepted"
+            ? "🎉"
+            : userProfile?.application_status === "rejected"
+            ? "💪"
+            : userProfile?.application_status === "waitlisted"
+            ? "📋"
+            : "⏳";
+
+        const personalTouches: string[] = [];
+        if (userProfile?.tech_focus) {
+          personalTouches.push(
+            `still grinding that ${userProfile.tech_focus}?`
+          );
+        }
+        if (userProfile?.career_goals) {
+          personalTouches.push(
+            `working towards your goal to ${userProfile.career_goals.toLowerCase()}?`
+          );
+        }
+        if (userProfile?.engineering_area) {
+          personalTouches.push(
+            `how's the ${userProfile.engineering_area} journey going?`
+          );
+        }
+
+        // Pick one random personal touch to avoid overwhelming
+        const personalTouch =
+          personalTouches.length > 0
+            ? personalTouches[
+                Math.floor(Math.random() * personalTouches.length)
+              ]
+            : "how's everything going?";
+
+        // Returning completed user - welcome them back warmly with context
+        welcomeMsg = `hey ${userName}! 👋 welcome back!
+
+![welcome back](https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM2RlOGZjYzJjZDE5NjFlOTczZDk5Y2Y3ZjM5ZGQ5YmZhNjFhNDhmMiZlcD12MV9naWZzX3NlYXJjaCZjdD1n/xUPGGDNsLvqsBOhuU0/giphy.gif)
+
+i remember you! ${statusEmoji} your application is **${
+          userProfile?.application_status || "pending"
+        }**.
+
+${personalTouch}
+
+what can i help you with today? wanna chat, have a meme war, get some coding help, or something else? 🚀`;
+
+        // Make sure they're in FREE_CHAT mode for returning users
+        if (session.state === "COMPLETED") {
+          session.state = "FREE_CHAT" as OnboardingState;
+        }
+      }
+
+      session.messages.push({ role: "assistant", content: welcomeMsg });
       await saveSession();
 
       return NextResponse.json({
-        assistant_message: WELCOME_MESSAGE,
+        assistant_message: welcomeMsg,
         token: generateResponseToken(),
         server_state: {
           session_id: session.session_id,
           state: session.state,
-          completed: false,
+          completed: isCompletedUser,
+          application_status: isCompletedUser
+            ? session.applicant_data?.application_status
+            : undefined,
+          user_name: isCompletedUser ? session.applicant_data?.name : undefined,
         },
         suggestions: DEFAULT_SUGGESTIONS[session.state] || [],
       });
@@ -2899,7 +3506,64 @@ export async function POST(request: NextRequest) {
         .replace("AWAITING_", "")
         .toLowerCase()
         .replace(/_/g, " ");
-      const resumeMessage = `welcome back! 👋\n\nlet's pick up where we left off. we were just about to talk about your **${currentPhase}**.`;
+
+      // Generate appropriate resume message based on state
+      const isCompletedUser =
+        session.state === "COMPLETED" || session.state === "FREE_CHAT";
+      const userName = session.applicant_data?.name;
+      const userProfile = session.applicant_data;
+
+      let resumeMessage: string;
+      if (isCompletedUser && userName) {
+        // Returning completed user - make it personal!
+        const statusEmoji =
+          userProfile?.application_status === "accepted"
+            ? "🎉"
+            : userProfile?.application_status === "rejected"
+            ? "💪"
+            : userProfile?.application_status === "waitlisted"
+            ? "📋"
+            : "⏳";
+
+        const personalTouches: string[] = [];
+        if (userProfile?.tech_focus) {
+          personalTouches.push(
+            `still grinding that ${userProfile.tech_focus}?`
+          );
+        }
+        if (userProfile?.projects) {
+          personalTouches.push(`how are those projects going?`);
+        }
+        if (userProfile?.engineering_area) {
+          personalTouches.push(
+            `any new ${userProfile.engineering_area} adventures?`
+          );
+        }
+
+        const personalTouch =
+          personalTouches.length > 0
+            ? `\n\n${
+                personalTouches[
+                  Math.floor(Math.random() * personalTouches.length)
+                ]
+              }`
+            : "";
+
+        resumeMessage = `hey ${userName}! ${statusEmoji} welcome back!\n\nyour application is **${
+          userProfile?.application_status || "pending"
+        }**.${personalTouch}\n\nwhat can i help you with today? wanna chat, have a meme war, or need something specific?`;
+
+        // Ensure they're in FREE_CHAT mode
+        if (session.state === "COMPLETED") {
+          session.state = "FREE_CHAT" as OnboardingState;
+        }
+      } else if (userName) {
+        // Still onboarding but we know their name
+        resumeMessage = `welcome back ${userName}! 👋\n\nlet's pick up where we left off. we were just about to talk about your **${currentPhase}**.`;
+      } else {
+        // Still onboarding, don't know name yet
+        resumeMessage = `welcome back! 👋\n\nlet's pick up where we left off. we were just about to talk about your **${currentPhase}**.`;
+      }
 
       session.messages.push({ role: "assistant", content: resumeMessage });
       await saveSession();
@@ -2910,7 +3574,11 @@ export async function POST(request: NextRequest) {
         server_state: {
           session_id: session.session_id,
           state: session.state,
-          completed: session.state === "COMPLETED",
+          completed: isCompletedUser,
+          application_status: isCompletedUser
+            ? session.applicant_data?.application_status
+            : undefined,
+          user_name: isCompletedUser ? session.applicant_data?.name : undefined,
         },
         suggestions:
           session.suggestions.length > 0
@@ -2995,7 +3663,8 @@ export async function POST(request: NextRequest) {
       // Reload session from DB to get the most up-to-date state after tool execution
       const updatedSession = await Session.findOne({ session_id });
       const finalState = updatedSession?.state || session.state;
-      const isCompleted = finalState === "COMPLETED";
+      const isCompleted =
+        finalState === "COMPLETED" || finalState === "FREE_CHAT";
       const pendingAction = updatedSession?.pending_action || null;
 
       // Clear pending action after reading it
@@ -3110,6 +3779,8 @@ export async function POST(request: NextRequest) {
       // Reload to get updated state
       const updatedSession = await Session.findOne({ session_id });
       const currentState = updatedSession?.state || session.state;
+      const isCompletedState =
+        currentState === "COMPLETED" || currentState === "FREE_CHAT";
 
       return NextResponse.json({
         assistant_message: fallbackMessage,
@@ -3117,7 +3788,13 @@ export async function POST(request: NextRequest) {
         server_state: {
           session_id: session.session_id,
           state: currentState,
-          completed: currentState === "COMPLETED",
+          completed: isCompletedState,
+          application_status: isCompletedState
+            ? updatedSession?.applicant_data?.application_status
+            : undefined,
+          user_name: isCompletedState
+            ? updatedSession?.applicant_data?.name
+            : undefined,
         },
         suggestions: DEFAULT_SUGGESTIONS[currentState as OnboardingState] || [],
       });

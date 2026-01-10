@@ -19,6 +19,7 @@ export const ONBOARDING_STATES = [
   "AWAITING_TECH_FOCUS",
   "AWAITING_SUCCESS_DEFINITION",
   "COMPLETED",
+  "FREE_CHAT", // Post-completion free interaction state
 ] as const;
 
 export type OnboardingState = (typeof ONBOARDING_STATES)[number];
