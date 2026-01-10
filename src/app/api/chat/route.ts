@@ -613,6 +613,7 @@ When a returning user says they forgot their secret phrase, you have TWO options
 1. **RECOVER** - Use if they want to try to verify their identity:
    - Call \`initiate_recovery\` with their email
    - If INSUFFICIENT_INFO: Tell them they didn't provide enough info during registration to verify. Offer to start fresh.
+     → ALWAYS call set_suggestions with: ["i'll try to remember", "let's start fresh"]
    - If RECOVERY_STARTED: Ask verification questions one at a time (don't reveal their stored values!)
    - After each answer, call \`verify_recovery_answer\` with the field and their answer
    - Keep asking until they reach the verification threshold or run out of attempts
@@ -621,6 +622,11 @@ When a returning user says they forgot their secret phrase, you have TWO options
 2. **START FRESH** - Use if they want to delete old data and restart:
    - Call \`start_fresh\` with confirm: true (after they explicitly agree)
    - This deletes their old application - make sure they understand this!
+
+**⚠️ RECOVERY SUGGESTIONS - ALWAYS SET THESE:**
+- After INSUFFICIENT_INFO response: set_suggestions({suggestions: ["i'll try to remember", "let's start fresh"]})
+- After incorrect secret phrase: set_suggestions({suggestions: ["let me try again", "i forgot my phrase", "start fresh"]})
+- After verification question: set_suggestions with example answers relevant to the field
 
 **Recovery Verification Questions (ask these WITHOUT revealing stored values):**
 - GitHub: "what's your github username?"

@@ -587,6 +587,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
 
   // Track if user has manually scrolled up
   const isUserScrolledUp = useRef(false);
+  const lastScrollTop = useRef(0);
 
   // Helper function to scroll to bottom
   const scrollToBottom = (instant = false) => {
@@ -604,6 +605,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
             behavior: "smooth",
           });
         }
+        lastScrollTop.current = container.scrollTop;
       }
     });
   };
@@ -626,37 +628,35 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
     if (!container) return;
 
     const handleScroll = () => {
-      checkIfNearBottom();
+      const currentScrollTop = container.scrollTop;
+
+      // If user scrolled UP (scrollTop decreased), immediately lock auto-scroll
+      if (currentScrollTop < lastScrollTop.current - 5) {
+        isUserScrolledUp.current = true;
+      } else {
+        // Otherwise check if near bottom
+        checkIfNearBottom();
+      }
+
+      lastScrollTop.current = currentScrollTop;
     };
 
-    container.addEventListener("scroll", handleScroll);
+    container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Scroll when new message is added (only if near bottom)
+  // Scroll when new message is added
   useEffect(() => {
-    // Reset scroll lock when new message comes in and user sends
     const lastMessage = messages[messages.length - 1];
     if (lastMessage?.role === "user") {
-      // User just sent a message, reset and scroll
-      isUserScrolledUp.current = false;
+      // User just sent a message - scroll once to show their message
+      // But don't lock auto-scroll - let them scroll up if they want
       scrollToBottom();
     } else if (lastMessage?.role === "assistant") {
       // AI message - only scroll if not manually scrolled up
       scrollToBottom();
     }
   }, [messages.length]);
-
-  // Scroll during streaming (respects user scroll position)
-  useEffect(() => {
-    if (isLoading && !isUserScrolledUp.current) {
-      const scrollInterval = setInterval(() => {
-        scrollToBottom(true);
-      }, 150);
-
-      return () => clearInterval(scrollInterval);
-    }
-  }, [isLoading]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
