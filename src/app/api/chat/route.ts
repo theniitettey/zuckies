@@ -54,12 +54,12 @@ const DEFAULT_SUGGESTIONS: Record<OnboardingState, string[]> = {
     "build confidence",
   ],
   COMPLETED: [
-    "let's have a meme war",
+    "⭐ rate my experience",
     "check my status",
     "tell me about the program",
-    "what's next?",
+    "let's have a meme war",
     "who is the mentor?",
-    "update my profile",
+    "i have some feedback",
   ],
 };
 
@@ -106,7 +106,9 @@ in the meantime, you can:
 - check your application status anytime (just say "check my status")
 - tell me more about yourself
 
-what would you like to know?`,
+---
+
+before you go - how was the onboarding experience? rate it 1-5 stars and share any thoughts or suggestions. your feedback helps make this better! ✨`,
   };
   return fallbacks[state] || "let's continue! what's your answer?";
 }
@@ -467,22 +469,58 @@ name, whatsapp, engineering_area, skill_level, improvement_goals, career_goals, 
 **NOT updatable (ask them to contact support):**
 email (used for identification)
 
-## 💬 FEEDBACK (OPTIONAL)
+## � NAVIGATING STATES (change_state tool)
 
-Users can optionally give feedback about their experience. NEVER pressure them - only collect if they offer or if conversation naturally ends well.
+Users can jump to any onboarding step to update their info! Use the \`change_state\` tool when:
 
-**When user wants to give feedback:**
+**Recognizing navigation requests:**
+- "go back to...", "take me to...", "let me update my..."
+- "i want to change my name", "redo my github", "fix my skill level"
+- "you didn't talk about my github", "what about my portfolio?"
+- "can we go back?", "let me redo that"
+
+**How to handle:**
+1. Identify which step they want → call \`change_state\` with the target state
+2. The tool sets the state AND appropriate suggestions
+3. Ask them the question for that step
+4. When they answer, use \`save_and_continue\` to save and advance
+
+**Available states to navigate to:**
+- AWAITING_NAME, AWAITING_WHATSAPP, AWAITING_ENGINEERING_AREA
+- AWAITING_SKILL_LEVEL, AWAITING_IMPROVEMENT_GOALS, AWAITING_CAREER_GOALS
+- AWAITING_GITHUB, AWAITING_LINKEDIN, AWAITING_PORTFOLIO
+- AWAITING_PROJECTS, AWAITING_TIME_COMMITMENT, AWAITING_LEARNING_STYLE
+- AWAITING_TECH_FOCUS, AWAITING_SUCCESS_DEFINITION
+
+**⚠️ CANNOT navigate to:** AWAITING_EMAIL, AWAITING_SECRET_PHRASE (security-sensitive)
+
+**Example:**
+User: "you didn't talk about my github!"
+You: Call change_state with target_state="AWAITING_GITHUB"
+Then ask about their github, comment on it if they shared it before
+
+## 💬 FEEDBACK (IMPORTANT AFTER ONBOARDING)
+
+After onboarding completes (state becomes COMPLETED), actively ask for feedback! This helps improve the experience.
+
+**After completing onboarding:**
+- Ask them to rate their experience (1-5 stars)
+- Ask what they liked and what could be improved
+- Keep it casual and friendly, not pushy: "btw, how was the onboarding? drop a quick rating 1-5 and any thoughts!"
+
+**When user gives feedback:**
 - Call \`submit_feedback\` with their rating (1-5), feedback text, and/or suggestions
 - Thank them genuinely
+- If they only give a rating, that's fine! Don't push for more
 
 **Recognizing feedback intent:**
 - "this was great!", "i love this", "this is cool" → ask if they want to leave a rating
 - "i have some feedback", "can i suggest something" → use submit_feedback
-- "rate this 5 stars", "giving you 4/5" → submit the rating
-- After completing onboarding, you can casually mention: "feel free to share any feedback if you'd like!"
+- "rate this 5 stars", "giving you 4/5", "⭐⭐⭐⭐" → submit the rating
+- Numbers like "5", "4/5", "5 stars" → submit as rating
 
 **Categories:**
-- onboarding: feedback about the signup process
+- onboarding: feedback about the signup process (default for new completions)
 - mentoring: feedback about advice/guidance received
 - ui: feedback about the interface
 - general: anything else`
@@ -668,6 +706,27 @@ Users won't always give you the info you asked for. They might ask questions or 
 - Respond without calling a tool when user provides actual answers
 - Mention the tool call to the user
 - Save questions, jokes, or gibberish as answers
+
+## 🔀 NAVIGATING STATES (change_state tool)
+
+Users can ask to go back or jump to a different step! Use the \`change_state\` tool when:
+
+**Recognizing navigation requests:**
+- "go back to...", "take me back to...", "i want to change my..."
+- "you skipped my github", "what about my portfolio?", "you didn't comment on..."
+- "can we go back?", "let me redo that", "i made a mistake"
+- "actually, let me fix my name", "hold on, go back"
+
+**How to handle:**
+1. Call \`change_state\` with the appropriate target_state
+2. The tool automatically sets relevant suggestions
+3. Ask them the question for that step (mention their current value if they have one)
+4. When they answer, use \`save_and_continue\` to save and advance
+
+**Example flow:**
+User: "wait you didn't say anything about my github"
+→ call change_state({ target_state: "AWAITING_GITHUB", reason: "user wants github feedback" })
+→ respond: "oh my bad! let me check your github... [comment on it] do you want to keep it or update it?"
 - Be boring - keep the vibe alive even when redirecting
 
 The tools handle saving to database and state management. Without tool calls, nothing persists.
@@ -1191,10 +1250,34 @@ Celebrate the submission, but be clear this is just the first step!`;
       console.log("🛠️ Tool executing: analyze_url", input.url);
 
       try {
-        // Normalize URL
+        // Normalize URL - handle usernames, partial URLs, etc.
         let url = input.url.trim();
-        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+
+        // Remove @ prefix if present
+        url = url.replace(/^@/, "");
+
+        // Detect if it's just a GitHub username (no dots, no slashes, looks like username)
+        const isLikelyGitHubUsername =
+          /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(url) &&
+          !url.includes(".");
+
+        if (isLikelyGitHubUsername) {
+          // Assume it's a GitHub username
+          url = `https://github.com/${url}`;
+          console.log("Normalized GitHub username to:", url);
+        } else if (url.includes("github.com") && !url.startsWith("http")) {
           url = `https://${url}`;
+        } else if (url.includes("linkedin.com") && !url.startsWith("http")) {
+          url = `https://${url}`;
+        } else if (!url.startsWith("http://") && !url.startsWith("https://")) {
+          // Add https:// for anything that looks like a domain
+          if (url.includes(".")) {
+            url = `https://${url}`;
+          } else {
+            // If it doesn't look like a URL at all, try as GitHub username
+            url = `https://github.com/${url}`;
+            console.log("Assumed GitHub username:", url);
+          }
         }
 
         // Skip LinkedIn - it always blocks
@@ -1253,17 +1336,22 @@ Celebrate the submission, but be clear this is just the first step!`;
         const cleanHtml = html
           .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
           .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-          .replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "[SVG]")
+          .replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "")
           .replace(/<!--[\s\S]*?-->/g, "")
           .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "")
           .replace(/<template[^>]*>[\s\S]*?<\/template>/gi, "")
-          .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, (match) =>
-            match.length > 2000 ? "[Header content]" : match
-          )
-          .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "[Footer]")
-          .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "[Navigation]")
-          .replace(/\s{3,}/g, "\n")
-          .replace(/\n\s*\n\s*\n/g, "\n\n");
+          .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, "")
+          .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "")
+          .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "")
+          .replace(/<[^>]+>/g, " ") // Remove all HTML tags
+          .replace(/&nbsp;/g, " ")
+          .replace(/&amp;/g, "&")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/\s{2,}/g, " ")
+          .replace(/\n\s*\n/g, "\n")
+          .trim();
 
         // Extract key metadata
         const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
@@ -1275,115 +1363,59 @@ Celebrate the submission, but be clear this is just the first step!`;
           html.match(/<meta\s+property="og:description"\s+content="([^"]*)"/i);
         const description = descMatch ? descMatch[1] : "";
 
-        // Extract Open Graph data for richer context
-        const ogImage =
-          html.match(/<meta\s+property="og:image"\s+content="([^"]*)"/i)?.[1] ||
-          "";
-        const ogType =
-          html.match(/<meta\s+property="og:type"\s+content="([^"]*)"/i)?.[1] ||
-          "";
-
-        // Get keywords if available
-        const keywords =
-          html.match(/<meta\s+name="keywords"\s+content="([^"]*)"/i)?.[1] || "";
-
-        // Truncate content
-        const maxLength = 20000;
-        const truncatedHtml =
+        // Truncate content AGGRESSIVELY - max 3000 chars to avoid AI timeout
+        const maxLength = 3000;
+        const truncatedContent =
           cleanHtml.length > maxLength
-            ? cleanHtml.slice(0, maxLength) + "\n\n[Content truncated...]"
+            ? cleanHtml.slice(0, maxLength) + "..."
             : cleanHtml;
 
-        // Determine page type label
+        // Determine page type and generate focused summary
         let pageType = "Web Page";
-        let analysisHints = "";
+        let summary = "";
 
         if (isGitHub) {
-          if (url.includes("/blob/") || url.includes("/tree/")) {
-            pageType = "GitHub Repository/Code";
-            analysisHints = `- Repository structure and organization
-- Code quality indicators (README, license, documentation)
-- Technologies/languages used
-- Recent activity and maintenance status
-- Stars, forks, issues, and community engagement`;
-          } else {
-            pageType = "GitHub Profile";
-            analysisHints = `- Username, bio, and profile completeness
-- Number of repositories, followers, following
-- Pinned/featured repositories
-- Programming languages they use most
-- Contribution activity and consistency
-- Notable projects or achievements
-- Areas for improvement`;
-          }
+          pageType =
+            url.includes("/blob/") || url.includes("/tree/")
+              ? "GitHub Repository"
+              : "GitHub Profile";
+
+          // Extract GitHub-specific info
+          const repoCount = html.match(/(\d+)\s*repositories/i)?.[1] || "";
+          const followers = html.match(/(\d+)\s*followers/i)?.[1] || "";
+          const following = html.match(/(\d+)\s*following/i)?.[1] || "";
+          const stars = html.match(/(\d+)\s*stars/i)?.[1] || "";
+          const bio =
+            html
+              .match(
+                /<div[^>]*class="[^"]*user-profile-bio[^"]*"[^>]*>([^<]+)/i
+              )?.[1]
+              ?.trim() || "";
+
+          summary = `GitHub Stats: ${repoCount ? `${repoCount} repos` : ""}${
+            followers ? `, ${followers} followers` : ""
+          }${following ? `, ${following} following` : ""}${
+            stars ? `, ${stars} stars` : ""
+          }${bio ? `\nBio: ${bio}` : ""}`;
         } else if (isDevTo || isMedium || isBlog) {
           pageType = "Blog/Article";
-          analysisHints = `- Article topic and main points
-- Writing quality and clarity
-- Technical depth
-- Engagement (likes, comments if visible)
-- Author's expertise level`;
-        } else if (isYouTube) {
-          pageType = "YouTube Video/Channel";
-          analysisHints = `- Video/channel topic
-- Content type (tutorial, review, etc.)
-- Production quality indicators
-- Engagement metrics if visible`;
-        } else if (isStackOverflow) {
-          pageType = "Stack Overflow";
-          analysisHints = `- Question/answer content
-- Technical context
-- Solution quality`;
-        } else if (isNpm) {
-          pageType = "NPM Package";
-          analysisHints = `- Package purpose and features
-- Documentation quality
-- Download stats and popularity
-- Dependencies and maintenance`;
-        } else if (isDocs) {
-          pageType = "Documentation";
-          analysisHints = `- Documentation topic
-- Completeness and clarity
-- Code examples
-- Useful for learning what`;
         } else if (isCodepen || isReplit) {
           pageType = "Code Playground";
-          analysisHints = `- Project type and purpose
-- Technologies used
-- Code quality and creativity
-- Functionality and interactivity`;
         } else if (isVercel || isNetlify) {
           pageType = "Deployed Project";
-          analysisHints = `- What the project does
-- Design and UX quality
-- Performance indicators
-- Technologies visible
-- Completeness and polish`;
-        } else {
-          pageType = input.context || "Portfolio/Website";
-          analysisHints = `- Overall purpose and content
-- Design and professionalism
-- Technologies/skills mentioned
-- Projects or work showcased
-- Contact information
-- Areas for improvement`;
+        } else if (isDocs) {
+          pageType = "Documentation";
         }
 
-        return `=== URL Analysis: ${pageType} ===
+        return `=== ${pageType}: ${title} ===
 URL: ${url}
-Title: ${title}
 ${description ? `Description: ${description}` : ""}
-${ogType ? `Type: ${ogType}` : ""}
-${keywords ? `Keywords: ${keywords}` : ""}
-${input.context ? `Context: ${input.context}` : ""}
+${summary ? `\n${summary}` : ""}
 
-=== Page Content ===
-${truncatedHtml}
+Key content (excerpt):
+${truncatedContent.slice(0, 1500)}
 
-=== Analysis Guidelines ===
-${analysisHints}
-
-Provide specific, helpful feedback based on what you find. Be encouraging but honest about areas for improvement.`;
+Give brief, encouraging feedback based on what you see. Be specific but concise!`;
       } catch (error: unknown) {
         console.error("URL analysis error:", error);
         const errorMessage =
@@ -1490,6 +1522,201 @@ Provide specific, helpful feedback based on what you find. Be encouraging but ho
         /_/g,
         " "
       )} from "${displayOld}" to "${displayNew}". Let the user know their profile has been updated.`;
+    }
+  );
+
+  // Change state tool - for navigating to specific onboarding steps
+  const changeStateTool = ai.defineTool(
+    {
+      name: "change_state",
+      description: `Navigate to a specific onboarding state. Use this when the user wants to:
+- Go back to a previous step ("go back to github", "i want to change my name")
+- Jump to a specific step ("let me update my skill level", "take me to the projects section")
+- Re-answer a question ("i want to redo my goals", "let me change my engineering area")
+
+This is useful both during onboarding AND after completion if they want to revisit/update something.
+
+States available (in order):
+1. AWAITING_EMAIL - email address
+2. AWAITING_SECRET_PHRASE - secret phrase for login
+3. AWAITING_NAME - their name
+4. AWAITING_WHATSAPP - whatsapp number
+5. AWAITING_ENGINEERING_AREA - frontend/backend/fullstack/mobile
+6. AWAITING_SKILL_LEVEL - beginner/intermediate/advanced
+7. AWAITING_IMPROVEMENT_GOALS - what they want to improve
+8. AWAITING_CAREER_GOALS - career objectives
+9. AWAITING_GITHUB - github link (optional)
+10. AWAITING_LINKEDIN - linkedin (optional)
+11. AWAITING_PORTFOLIO - portfolio site (optional)
+12. AWAITING_PROJECTS - projects they've built
+13. AWAITING_TIME_COMMITMENT - hours per week
+14. AWAITING_LEARNING_STYLE - how they learn best
+15. AWAITING_TECH_FOCUS - technologies to focus on
+16. AWAITING_SUCCESS_DEFINITION - how they define success
+17. COMPLETED - finished onboarding
+
+DO NOT change to AWAITING_EMAIL or AWAITING_SECRET_PHRASE (security-sensitive).`,
+      inputSchema: z.object({
+        target_state: z
+          .enum([
+            "AWAITING_NAME",
+            "AWAITING_WHATSAPP",
+            "AWAITING_ENGINEERING_AREA",
+            "AWAITING_SKILL_LEVEL",
+            "AWAITING_IMPROVEMENT_GOALS",
+            "AWAITING_CAREER_GOALS",
+            "AWAITING_GITHUB",
+            "AWAITING_LINKEDIN",
+            "AWAITING_PORTFOLIO",
+            "AWAITING_PROJECTS",
+            "AWAITING_TIME_COMMITMENT",
+            "AWAITING_LEARNING_STYLE",
+            "AWAITING_TECH_FOCUS",
+            "AWAITING_SUCCESS_DEFINITION",
+          ])
+          .describe("The state to change to"),
+        reason: z
+          .string()
+          .optional()
+          .describe("Why the user wants to change state (for logging)"),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log("🛠️ Tool executing: change_state", input);
+
+      const { target_state, reason } = input;
+      const oldState = session.state;
+      const wasCompleted = oldState === "COMPLETED";
+
+      // Get the current value for this field (if any)
+      const stateFieldMap: Record<string, keyof IApplicantData> = {
+        AWAITING_NAME: "name",
+        AWAITING_WHATSAPP: "whatsapp",
+        AWAITING_ENGINEERING_AREA: "engineering_area",
+        AWAITING_SKILL_LEVEL: "skill_level",
+        AWAITING_IMPROVEMENT_GOALS: "improvement_goals",
+        AWAITING_CAREER_GOALS: "career_goals",
+        AWAITING_GITHUB: "github",
+        AWAITING_LINKEDIN: "linkedin",
+        AWAITING_PORTFOLIO: "portfolio",
+        AWAITING_PROJECTS: "projects",
+        AWAITING_TIME_COMMITMENT: "time_commitment",
+        AWAITING_LEARNING_STYLE: "learning_style",
+        AWAITING_TECH_FOCUS: "tech_focus",
+        AWAITING_SUCCESS_DEFINITION: "success_definition",
+      };
+
+      const field = stateFieldMap[target_state];
+      const currentValue = field
+        ? session.applicant_data[field] || "(not set)"
+        : null;
+
+      // Human-readable state names
+      const stateNames: Record<string, string> = {
+        AWAITING_NAME: "name",
+        AWAITING_WHATSAPP: "whatsapp number",
+        AWAITING_ENGINEERING_AREA: "engineering area",
+        AWAITING_SKILL_LEVEL: "skill level",
+        AWAITING_IMPROVEMENT_GOALS: "improvement goals",
+        AWAITING_CAREER_GOALS: "career goals",
+        AWAITING_GITHUB: "github",
+        AWAITING_LINKEDIN: "linkedin",
+        AWAITING_PORTFOLIO: "portfolio",
+        AWAITING_PROJECTS: "projects",
+        AWAITING_TIME_COMMITMENT: "time commitment",
+        AWAITING_LEARNING_STYLE: "learning style",
+        AWAITING_TECH_FOCUS: "tech focus",
+        AWAITING_SUCCESS_DEFINITION: "success definition",
+      };
+
+      // Suggested answers for each state
+      const stateSuggestions: Record<string, string[]> = {
+        AWAITING_NAME: ["keep current name", "change it"],
+        AWAITING_WHATSAPP: ["keep current number", "new number"],
+        AWAITING_ENGINEERING_AREA: [
+          "frontend",
+          "backend",
+          "full stack",
+          "mobile",
+        ],
+        AWAITING_SKILL_LEVEL: ["beginner", "intermediate", "advanced"],
+        AWAITING_IMPROVEMENT_GOALS: [
+          "system design",
+          "clean code",
+          "testing",
+          "keep current",
+        ],
+        AWAITING_CAREER_GOALS: [
+          "get hired",
+          "freelance",
+          "promotion",
+          "keep current",
+        ],
+        AWAITING_GITHUB: ["here's my github", "skip github", "keep current"],
+        AWAITING_LINKEDIN: [
+          "here's my linkedin",
+          "skip linkedin",
+          "keep current",
+        ],
+        AWAITING_PORTFOLIO: [
+          "here's my portfolio",
+          "no portfolio",
+          "keep current",
+        ],
+        AWAITING_PROJECTS: [
+          "here are my projects",
+          "still building",
+          "keep current",
+        ],
+        AWAITING_TIME_COMMITMENT: [
+          "5 hours/week",
+          "10 hours/week",
+          "15+ hours/week",
+        ],
+        AWAITING_LEARNING_STYLE: [
+          "hands-on coding",
+          "watching videos",
+          "reading docs",
+        ],
+        AWAITING_TECH_FOCUS: ["javascript", "python", "rust", "keep current"],
+        AWAITING_SUCCESS_DEFINITION: [
+          "ship projects",
+          "get hired",
+          "build confidence",
+        ],
+      };
+
+      // Change the state
+      session.state = target_state as OnboardingState;
+      session.suggestions = stateSuggestions[target_state] || [];
+      markPendingSave();
+
+      const humanState = stateNames[target_state];
+
+      console.log(
+        `State changed: ${oldState} -> ${target_state}${
+          reason ? ` (reason: ${reason})` : ""
+        }`
+      );
+
+      return `STATE_CHANGED: Moved from ${oldState} to ${target_state}.
+
+${
+  wasCompleted
+    ? "⚠️ Note: User was in COMPLETED state - they're updating their application."
+    : ""
+}
+
+Current ${humanState}: ${currentValue}
+
+Now ask them for their ${humanState}. ${
+        currentValue !== "(not set)"
+          ? `Mention their current value is "${currentValue}" in case they want to keep it.`
+          : ""
+      }
+
+After they respond, use save_and_continue to save the new value and advance to the next state.`;
     }
   );
 
@@ -2417,6 +2644,102 @@ Has Pending Action: ${session.pending_action || "NONE"}`;
     }
   );
 
+  // List capabilities tool - for answering "what can you do?"
+  const listCapabilitiesTool = ai.defineTool(
+    {
+      name: "list_capabilities",
+      description:
+        "List all the AI's capabilities. Use this when the user asks 'what can you do?', 'help', 'what are your features?', 'what commands are there?', or similar questions about your abilities.",
+      inputSchema: z.object({}),
+      outputSchema: z.string(),
+    },
+    async () => {
+      console.log("🛠️ Tool executing: list_capabilities");
+
+      const isCompleted = session.state === "COMPLETED";
+      const userName = session.applicant_data?.name
+        ? session.applicant_data.name.split(" ")[0].toLowerCase()
+        : "there";
+
+      if (isCompleted) {
+        return `=== MY CAPABILITIES (POST-ONBOARDING) ===
+
+Hey ${userName}! Here's what I can do for you:
+
+🎯 **PROFILE & APPLICATION**
+- Check your application status ("what's my status?", "am i accepted?")
+- Update any profile info ("update my github", "change my goals")
+- Navigate to any section to update it ("go back to skill level")
+- View your session info ("show my profile")
+
+💬 **CHAT & SUPPORT**
+- Answer coding questions (I'm here to help!)
+- Discuss tech, career advice, project ideas
+- Share resources and learning paths
+- Give feedback on your code or projects
+
+🔗 **URL ANALYSIS**
+- Analyze GitHub profiles, portfolios, websites
+- Give feedback on your projects if you share links
+
+🎭 **FUN STUFF**
+- Have meme wars! ("let's have a meme war")
+- Share memes and GIFs
+- Funfool around and have a good time
+
+🔐 **ACCOUNT**
+- Log out ("logout", "sign out")
+- Check authentication status
+- Extend your session if needed
+
+📝 **FEEDBACK**
+- Leave feedback about your experience
+- Rate the onboarding (1-5 stars)
+- Share suggestions
+
+Present these naturally - don't just dump a list. Pick relevant ones based on what they might need!`;
+      } else {
+        const currentState = session.state
+          .replace("AWAITING_", "")
+          .toLowerCase()
+          .replace(/_/g, " ");
+
+        return `=== MY CAPABILITIES (DURING ONBOARDING) ===
+
+Hey ${userName}! I'm helping you through the onboarding process. Here's what I can do:
+
+📝 **ONBOARDING**
+- Guide you through each step (currently on: ${currentState})
+- Save your answers and progress
+- Let you skip optional fields (github, linkedin, portfolio)
+
+🔀 **NAVIGATION**
+- Go back to previous steps ("go back to name", "redo my goals")
+- Jump to any section ("take me to skill level")
+- Let you update answers before submitting
+
+💬 **QUESTIONS**
+- Answer questions about the program
+- Explain what info we need and why
+- Share info about the mentor
+
+🔐 **ACCOUNT**
+- Help returning users verify their identity
+- Account recovery if you forgot your secret phrase
+- Start fresh if needed
+
+🎯 **AFTER ONBOARDING**
+Once you complete onboarding, I unlock more features:
+- Full chat support for coding questions
+- Meme wars and fun interactions
+- Profile updates anytime
+- Application status tracking
+
+Present these naturally based on context!`;
+      }
+    }
+  );
+
   return [
     saveAndContinueTool,
     verifySecretPhraseTool,
@@ -2425,6 +2748,7 @@ Has Pending Action: ${session.pending_action || "NONE"}`;
     searchGiphyTool,
     searchWebTool,
     updateProfileTool,
+    changeStateTool,
     setSuggestionsTool,
     checkStatusTool,
     logoutTool,
@@ -2439,6 +2763,7 @@ Has Pending Action: ${session.pending_action || "NONE"}`;
     invalidateSessionTool,
     extendSessionTool,
     startMemeWarTool,
+    listCapabilitiesTool,
   ];
 }
 

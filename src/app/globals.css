@@ -373,4 +373,18 @@ body {
     pointer-events: none;
     mix-blend-mode: overlay;
   }
+
+  /* Infinite marquee animation for suggestions */
+  @keyframes marquee {
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(-33.33%);
+    }
+  }
+
+  .animate-marquee {
+    animation: marquee linear infinite;
+  }
 }

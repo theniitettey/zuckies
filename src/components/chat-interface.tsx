@@ -190,6 +190,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
   const [pendingRetry, setPendingRetry] = useState<string | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const giphySearchRef = useRef<HTMLInputElement>(null);
   const { theme, setTheme } = useTheme();
@@ -297,6 +298,10 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         const response = await fetch(url, options);
+        // Don't retry on auth errors (401) or client errors (4xx) - only server errors
+        if (response.status === 401 || response.status === 400) {
+          return response; // Return immediately, let caller handle it
+        }
         if (!response.ok && response.status >= 500) {
           throw new Error(`Server error: ${response.status}`);
         }
@@ -522,7 +527,23 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
         }),
       });
 
+      // Handle 401 - token expired or invalid, start fresh
+      if (response.status === 401) {
+        console.log("Session expired or invalid, starting fresh");
+        localStorage.removeItem("onboarding_session");
+        startFreshSession();
+        return;
+      }
+
       const data = await response.json();
+
+      // Check for error in response body
+      if (data.error) {
+        console.log("Resume error:", data.error);
+        localStorage.removeItem("onboarding_session");
+        startFreshSession();
+        return;
+      }
 
       // Update the token if a new one is provided
       if (data.token) {
@@ -546,21 +567,96 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       ]);
     } catch {
       // Fall back to fresh session
+      localStorage.removeItem("onboarding_session");
       startFreshSession();
     }
   };
 
   const handleLogout = () => {
-    // Clear all session data and token
+    // Clear ALL session data completely
     localStorage.removeItem("onboarding_session");
+    sessionStorage.clear(); // Clear any session storage too
     setAuthToken(null);
+    setSessionState(null);
+    setMessages([]);
+    setSuggestions([]);
+    setInput("");
     // Reset to landing page
     onClose();
   };
 
+  // Track if user has manually scrolled up
+  const isUserScrolledUp = useRef(false);
+
+  // Helper function to scroll to bottom
+  const scrollToBottom = (instant = false) => {
+    // Don't scroll if user manually scrolled up
+    if (isUserScrolledUp.current) return;
+
+    requestAnimationFrame(() => {
+      if (messagesContainerRef.current) {
+        const container = messagesContainerRef.current;
+        if (instant) {
+          container.scrollTop = container.scrollHeight;
+        } else {
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: "smooth",
+          });
+        }
+      }
+    });
+  };
+
+  // Check if user is near bottom (within 100px)
+  const checkIfNearBottom = () => {
+    if (messagesContainerRef.current) {
+      const container = messagesContainerRef.current;
+      const threshold = 100;
+      const isNearBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight <
+        threshold;
+      isUserScrolledUp.current = !isNearBottom;
+    }
+  };
+
+  // Handle scroll events to detect manual scrolling
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      checkIfNearBottom();
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Scroll when new message is added (only if near bottom)
+  useEffect(() => {
+    // Reset scroll lock when new message comes in and user sends
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.role === "user") {
+      // User just sent a message, reset and scroll
+      isUserScrolledUp.current = false;
+      scrollToBottom();
+    } else if (lastMessage?.role === "assistant") {
+      // AI message - only scroll if not manually scrolled up
+      scrollToBottom();
+    }
+  }, [messages.length]);
+
+  // Scroll during streaming (respects user scroll position)
+  useEffect(() => {
+    if (isLoading && !isUserScrolledUp.current) {
+      const scrollInterval = setInterval(() => {
+        scrollToBottom(true);
+      }, 150);
+
+      return () => clearInterval(scrollInterval);
+    }
+  }, [isLoading]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -605,6 +701,15 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
         }),
       });
 
+      // Handle 401 - session expired, start fresh
+      if (response.status === 401) {
+        console.log("Session expired during chat, starting fresh");
+        localStorage.removeItem("onboarding_session");
+        setMessages([]);
+        startFreshSession();
+        return;
+      }
+
       // Mark user message as sent
       setMessages((prev) =>
         prev.map((m) =>
@@ -646,6 +751,8 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                         : m
                     )
                   );
+                  // Scroll on each chunk to keep up with streaming (instant)
+                  scrollToBottom(true);
                 } else if (data.type === "done") {
                   // Update token if provided
                   if (data.token) {
@@ -992,7 +1099,10 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto pt-20 sm:pt-24 pb-32 sm:pb-40 px-4 sm:px-6 relative z-10">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto pt-20 sm:pt-24 pb-32 sm:pb-40 px-4 sm:px-6 relative z-10"
+      >
         <div className="max-w-2xl mx-auto space-y-4 sm:space-y-5">
           <AnimatePresence mode="popLayout">
             {messages.map((message, index) => (
@@ -1039,45 +1149,59 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             className={`absolute left-0 right-0 z-30 px-3 sm:px-4 ${
               sessionState?.completed
-                ? "bottom-[140px] sm:bottom-[150px]"
-                : "bottom-[60px] sm:bottom-[70px]"
+                ? "bottom-[100px] sm:bottom-[110px]"
+                : "bottom-[72px] sm:bottom-[82px]"
             }`}
           >
             <div className="max-w-2xl mx-auto overflow-hidden">
-              {/* Marquee container */}
-              <div className="flex w-full overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
-                <motion.div
-                  className="flex gap-3 py-2"
-                  animate={{
-                    x: [0, -50 * getSuggestions().length],
-                  }}
-                  transition={{
-                    x: {
-                      duration: getSuggestions().length * 3,
-                      repeat: Infinity,
-                      ease: "linear",
-                    },
-                  }}
-                  whileHover={{ animationPlayState: "paused" }}
-                  style={{ animationPlayState: "running" }}
-                >
-                  {/* Double the items for seamless loop */}
-                  {[...getSuggestions(), ...getSuggestions()].map(
-                    (suggestion, i) => (
-                      <motion.button
+              {/* Marquee container - only animate if enough items */}
+              {getSuggestions().length <= 3 ? (
+                // Few suggestions - just center them, no animation
+                <div className="flex justify-center gap-3 py-2">
+                  {getSuggestions().map((suggestion, i) => (
+                    <motion.button
+                      key={`${suggestion}-${i}`}
+                      type="button"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      onClick={() => handleSuggestionClick(suggestion)}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="liquid-glass-pill px-4 py-2 rounded-full text-sm text-foreground/70 hover:text-foreground/90 whitespace-nowrap transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-400/50 flex-shrink-0"
+                    >
+                      {suggestion}
+                    </motion.button>
+                  ))}
+                </div>
+              ) : (
+                // Many suggestions - infinite scroll marquee
+                <div className="flex w-full overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)] group">
+                  <div
+                    className="flex gap-3 py-2 animate-marquee group-hover:[animation-play-state:paused]"
+                    style={{
+                      // Triple the items for smoother infinite loop
+                      animationDuration: `${getSuggestions().length * 4}s`,
+                    }}
+                  >
+                    {/* Triple the items for seamless loop */}
+                    {[
+                      ...getSuggestions(),
+                      ...getSuggestions(),
+                      ...getSuggestions(),
+                    ].map((suggestion, i) => (
+                      <button
                         key={`${suggestion}-${i}`}
                         type="button"
                         onClick={() => handleSuggestionClick(suggestion)}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="liquid-glass-pill px-4 py-2 rounded-full text-sm text-foreground/70 hover:text-foreground/90 whitespace-nowrap transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-400/50 flex-shrink-0"
+                        className="liquid-glass-pill px-4 py-2 rounded-full text-sm text-foreground/70 hover:text-foreground/90 hover:scale-105 active:scale-95 whitespace-nowrap transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-400/50 flex-shrink-0"
                       >
                         {suggestion}
-                      </motion.button>
-                    )
-                  )}
-                </motion.div>
-              </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -1091,7 +1215,11 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute bottom-[70px] sm:bottom-[80px] left-0 right-0 z-30 px-3 sm:px-4"
+            className={`absolute left-0 right-0 z-30 px-3 sm:px-4 ${
+              sessionState?.completed
+                ? "bottom-[100px] sm:bottom-[110px]"
+                : "bottom-[70px] sm:bottom-[80px]"
+            }`}
           >
             <div className="max-w-2xl mx-auto">
               <div className="liquid-glass rounded-2xl p-3 sm:p-4">
