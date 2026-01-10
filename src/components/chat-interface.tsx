@@ -3,6 +3,8 @@
 import type React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ChevronLeft,
   Send,
@@ -14,6 +16,7 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  LogOut,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import confetti from "canvas-confetti";
@@ -40,6 +43,9 @@ interface SessionState {
   session_id: string;
   state: string;
   completed: boolean;
+  action?: "logout" | "meme_war" | null;
+  application_status?: "pending" | "accepted" | "rejected" | "waitlisted";
+  user_name?: string;
 }
 
 interface GiphyGif {
@@ -173,14 +179,18 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
   const [showGiphySearch, setShowGiphySearch] = useState(false);
   const [hasShownCelebration, setHasShownCelebration] = useState(false);
   const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [inMemeWar, setInMemeWar] = useState(false);
   const [savedSession, setSavedSession] = useState<{
     session_id: string;
     state: string;
     messages: Message[];
+    token?: string;
   } | null>(null);
   const [pendingRetry, setPendingRetry] = useState<string | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const giphySearchRef = useRef<HTMLInputElement>(null);
   const { theme, setTheme } = useTheme();
 
@@ -194,10 +204,11 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           state: sessionState.state,
           messages,
           timestamp: Date.now(),
+          token: authToken,
         })
       );
     }
-  }, [sessionState, messages]);
+  }, [sessionState, messages, authToken]);
 
   // Clear saved session when completed
   useEffect(() => {
@@ -350,134 +361,58 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
     return () => clearTimeout(timer);
   }, [giphySearch, showGiphySearch]);
 
-  // Handle Giphy gif selection
-  const handleGiphySelect = async (gif: GiphyGif) => {
-    if (!sessionState) return;
-
-    const memeContent = `![${gif.title}](${gif.url})`;
-    const memeMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: memeContent,
-      timestamp: Date.now(),
-      status: "sending",
-      originalInput: `[user sent a gif: "${gif.title}"]`,
-    };
-
-    setMessages((prev) => [...prev, memeMessage]);
+  // Handle Giphy gif selection - insert markdown at cursor position
+  const handleGiphySelect = (gif: GiphyGif) => {
+    const memeMarkdown = `![${gif.title}](${gif.url})`;
+    insertAtCursor(memeMarkdown);
     setShowMemes(false);
     setShowGiphySearch(false);
     setGiphySearch("");
     setGiphyResults([]);
-    setIsLoading(true);
-
-    try {
-      const response = await fetchWithRetry("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionState.session_id,
-          message_id: memeMessage.id,
-          user_input: memeMessage.originalInput,
-        }),
-      });
-
-      const data = await response.json();
-      setSessionState(data.server_state);
-      setSuggestions(data.suggestions || []);
-
-      // Mark message as sent
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === memeMessage.id ? { ...m, status: "sent" } : m
-        )
-      );
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: data.assistant_message,
-          timestamp: Date.now(),
-          status: "sent",
-          shouldAnimate: true,
-        },
-      ]);
-    } catch {
-      // Mark message as failed
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === memeMessage.id ? { ...m, status: "failed" } : m
-        )
-      );
-    } finally {
-      setIsLoading(false);
-    }
   };
 
-  // Handle meme selection - user sends the meme and bot responds
-  const handleMemeSelect = async (meme: (typeof MEMES)[0]) => {
-    if (!sessionState) return;
+  // Insert text at cursor position in textarea
+  const insertAtCursor = (text: string) => {
+    const textarea = inputRef.current;
+    if (!textarea) {
+      setInput((prev) => prev + text);
+      return;
+    }
 
-    const memeContent = `![${meme.label}](${meme.url})`;
-    const memeMessage: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: memeContent,
-      timestamp: Date.now(),
-      status: "sending",
-      originalInput: `[user sent a meme: "${meme.label}"]`,
-    };
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = input.slice(0, start);
+    const after = input.slice(end);
 
-    setMessages((prev) => [...prev, memeMessage]);
+    // Add newlines for better formatting if there's existing content
+    let newText = text;
+    if (before && !before.endsWith("\n")) {
+      newText = "\n" + newText;
+    }
+    if (after && !after.startsWith("\n")) {
+      newText = newText + "\n";
+    }
+
+    const newValue = before + newText + after;
+    setInput(newValue);
+
+    // Set cursor position after inserted text
+    setTimeout(() => {
+      textarea.focus();
+      const newPos = before.length + newText.length;
+      textarea.setSelectionRange(newPos, newPos);
+    }, 0);
+  };
+
+  // Handle meme selection - insert markdown at cursor position
+  const handleMemeSelect = (meme: (typeof MEMES)[0]) => {
+    const memeMarkdown = `![${meme.label}](${meme.url})`;
+    insertAtCursor(memeMarkdown);
     setShowMemes(false);
-    setIsLoading(true);
-
-    try {
-      const response = await fetchWithRetry("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionState.session_id,
-          message_id: memeMessage.id,
-          user_input: memeMessage.originalInput,
-        }),
-      });
-
-      const data = await response.json();
-      setSessionState(data.server_state);
-      setSuggestions(data.suggestions || []);
-
-      // Mark message as sent
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === memeMessage.id ? { ...m, status: "sent" } : m
-        )
-      );
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: data.assistant_message,
-          timestamp: Date.now(),
-          status: "sent",
-          shouldAnimate: true,
-        },
-      ]);
-    } catch {
-      // Mark message as failed
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === memeMessage.id ? { ...m, status: "failed" } : m
-        )
-      );
-    } finally {
-      setIsLoading(false);
-    }
   };
+
+  // Check if input contains a meme (for AI context)
+  const hasMemeInInput = input.includes("![") && input.includes("](");
 
   useEffect(() => {
     // Check for saved session
@@ -505,6 +440,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
     setShowResumePrompt(false);
     setSavedSession(null);
     localStorage.removeItem("onboarding_session");
+    setAuthToken(null);
 
     const newSessionId = crypto.randomUUID();
     const initMessageId = crypto.randomUUID();
@@ -522,6 +458,12 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       });
 
       const data = await response.json();
+
+      // Store the JWT token
+      if (data.token) {
+        setAuthToken(data.token);
+      }
+
       setSessionState(data.server_state);
       setSuggestions(data.suggestions || []);
       setMessages([
@@ -559,15 +501,21 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
     setShowResumePrompt(false);
     setMessages(savedSession.messages);
 
+    // Restore the saved token
+    if (savedSession.token) {
+      setAuthToken(savedSession.token);
+    }
+
     const resumeMessageId = crypto.randomUUID();
 
-    // Resume with the saved session ID
+    // Resume with the saved token for authentication
     try {
       const response = await fetchWithRetry("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          session_id: savedSession.session_id,
+          token: savedSession.token,
+          session_id: savedSession.session_id, // Fallback for sessions without token
           message_id: resumeMessageId,
           user_input: "",
           action: "resume",
@@ -575,6 +523,12 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       });
 
       const data = await response.json();
+
+      // Update the token if a new one is provided
+      if (data.token) {
+        setAuthToken(data.token);
+      }
+
       setSessionState(data.server_state);
       setSuggestions(data.suggestions || []);
 
@@ -594,6 +548,14 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       // Fall back to fresh session
       startFreshSession();
     }
+  };
+
+  const handleLogout = () => {
+    // Clear all session data and token
+    localStorage.removeItem("onboarding_session");
+    setAuthToken(null);
+    // Reset to landing page
+    onClose();
   };
 
   useEffect(() => {
@@ -636,7 +598,8 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          session_id: sessionState.session_id,
+          token: authToken,
+          session_id: sessionState.session_id, // Fallback
           message_id: userMessage.id,
           user_input: messageContent,
         }),
@@ -684,6 +647,11 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                     )
                   );
                 } else if (data.type === "done") {
+                  // Update token if provided
+                  if (data.token) {
+                    setAuthToken(data.token);
+                  }
+
                   // Update session state and suggestions
                   setSessionState(data.server_state);
                   setSuggestions(data.suggestions || []);
@@ -696,6 +664,19 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                         : m
                     )
                   );
+
+                  // Handle actions from server
+                  if (data.server_state?.action === "logout") {
+                    // Delay logout to let the goodbye message display
+                    setTimeout(() => {
+                      handleLogout();
+                    }, 5000);
+                  } else if (data.server_state?.action === "meme_war") {
+                    setInMemeWar(true);
+                  } else if (data.server_state?.action === null && inMemeWar) {
+                    // Meme war ended
+                    setInMemeWar(false);
+                  }
                 }
               } catch (err) {
                 console.error("Failed to parse SSE data:", err);
@@ -739,7 +720,8 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          session_id: sessionState.session_id,
+          token: authToken,
+          session_id: sessionState.session_id, // Fallback
           message_id: messageId, // Same ID for idempotency
           user_input: failedMessage.originalInput || failedMessage.content,
           action: failedMessage.role === "assistant" ? "init" : "chat",
@@ -747,6 +729,12 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
       });
 
       const data = await response.json();
+
+      // Update token if provided
+      if (data.token) {
+        setAuthToken(data.token);
+      }
+
       setSessionState(data.server_state);
       setSuggestions(data.suggestions || []);
 
@@ -902,7 +890,8 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.1 }}
-            className="liquid-glass-pill px-4 py-2 sm:px-5 sm:py-2.5 rounded-2xl flex flex-col items-center gap-1.5"
+            className="liquid-glass-pill px-4 py-2 sm:px-5 sm:py-2.5 rounded-2xl flex flex-col items-center gap-1.5 cursor-pointer"
+            onClick={() => sessionState?.completed && setShowStatusModal(true)}
           >
             <AnimatePresence mode="wait">
               <motion.span
@@ -911,51 +900,94 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 5 }}
                 transition={{ duration: 0.2 }}
-                className="text-xs sm:text-sm text-foreground/80 font-medium"
+                className="text-xs sm:text-sm text-foreground/80 font-medium flex items-center gap-1.5"
               >
-                {PHASE_NAMES[sessionState?.state || "AWAITING_NAME"] ||
-                  "loading"}
+                {sessionState?.completed ? (
+                  <>
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        sessionState?.application_status === "accepted"
+                          ? "bg-green-500"
+                          : sessionState?.application_status === "rejected"
+                          ? "bg-red-500"
+                          : sessionState?.application_status === "waitlisted"
+                          ? "bg-yellow-500"
+                          : "bg-orange-400 animate-pulse"
+                      }`}
+                    />
+                    {sessionState?.application_status === "accepted"
+                      ? "accepted ✨"
+                      : sessionState?.application_status === "rejected"
+                      ? "not accepted"
+                      : sessionState?.application_status === "waitlisted"
+                      ? "waitlisted"
+                      : "under review"}
+                    {sessionState?.application_status === "pending" && (
+                      <span className="text-[10px] text-foreground/50">
+                        tap for info
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  PHASE_NAMES[sessionState?.state || "AWAITING_NAME"] ||
+                  "loading"
+                )}
               </motion.span>
             </AnimatePresence>
-            <div className="flex gap-1 sm:gap-1.5">
-              {STATE_ORDER.slice(0, -1).map((state, i) => {
-                const currentIndex = STATE_ORDER.indexOf(
-                  sessionState?.state || "AWAITING_NAME"
-                );
-                const isCompleted = i < currentIndex;
-                const isCurrent = i === currentIndex;
-                return (
-                  <motion.div
-                    key={state}
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ delay: i * 0.02 }}
-                    className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full transition-all duration-300 ${
-                      isCompleted
-                        ? "bg-orange-400"
-                        : isCurrent
-                        ? "bg-orange-400/70 ring-2 ring-orange-400/30"
-                        : "bg-foreground/15"
-                    }`}
-                  />
-                );
-              })}
-            </div>
+            {!sessionState?.completed && (
+              <div className="flex gap-1 sm:gap-1.5">
+                {STATE_ORDER.slice(0, -1).map((state, i) => {
+                  const currentIndex = STATE_ORDER.indexOf(
+                    sessionState?.state || "AWAITING_NAME"
+                  );
+                  const isCompleted = i < currentIndex;
+                  const isCurrent = i === currentIndex;
+                  return (
+                    <motion.div
+                      key={state}
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: i * 0.02 }}
+                      className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full transition-all duration-300 ${
+                        isCompleted
+                          ? "bg-orange-400"
+                          : isCurrent
+                          ? "bg-orange-400/70 ring-2 ring-orange-400/30"
+                          : "bg-foreground/15"
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </motion.div>
 
           {/* Theme toggle */}
-          <motion.button
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="liquid-glass-pill w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-foreground/60 hover:text-foreground/90 transition-colors"
-          >
-            {theme === "dark" ? (
-              <Sun className="w-4 h-4" />
-            ) : (
-              <Moon className="w-4 h-4" />
-            )}
-          </motion.button>
+          <div className="flex items-center gap-2">
+            <motion.button
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="liquid-glass-pill w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-foreground/60 hover:text-foreground/90 transition-colors"
+            >
+              {theme === "dark" ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
+            </motion.button>
+
+            {/* Logout button */}
+            <motion.button
+              onClick={handleLogout}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="liquid-glass-pill w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-foreground/60 hover:text-red-500 transition-colors"
+              title="logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </motion.button>
+          </div>
         </motion.div>
       </div>
 
@@ -1202,7 +1234,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
         )}
       </AnimatePresence>
 
-      {/* Bottom input - iMessage style */}
+      {/* Bottom input - rich markdown editor */}
       <div className="absolute bottom-0 left-0 right-0 z-20 p-3 sm:p-4 pb-[max(env(safe-area-inset-bottom),12px)] sm:pb-[max(env(safe-area-inset-bottom),16px)]">
         <motion.form
           initial={{ opacity: 0, y: 20 }}
@@ -1211,7 +1243,13 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
           onSubmit={handleSendMessage}
           className="max-w-2xl mx-auto"
         >
-          <div className="liquid-glass rounded-full p-1.5 sm:p-2 flex items-center gap-2">
+          <div
+            className={`liquid-glass p-1.5 sm:p-2 flex items-end gap-2 ${
+              hasMemeInInput || input.includes("\n")
+                ? "rounded-2xl"
+                : "rounded-full"
+            }`}
+          >
             {/* Plus/Close button - toggles meme picker */}
             <motion.button
               type="button"
@@ -1219,7 +1257,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               animate={{ rotate: showMemes ? 45 : 0 }}
-              className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-colors flex-shrink-0 ${
+              className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-colors flex-shrink-0 mb-0.5 ${
                 showMemes
                   ? "bg-orange-500/20 text-orange-400"
                   : "bg-foreground/10 text-foreground/50 hover:text-foreground/70"
@@ -1228,87 +1266,218 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
               <Plus className="w-4 h-4" />
             </motion.button>
 
-            {/* Input wrapper */}
-            <div className="flex-1 flex items-center min-w-0">
-              <input
+            {/* Text input with meme preview */}
+            <div className="flex-1 min-w-0 flex flex-col">
+              {/* Meme preview - shows attached memes above input */}
+              {hasMemeInInput && (
+                <div className="px-2 pt-2 pb-1 flex flex-wrap gap-2">
+                  {Array.from(input.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)).map(
+                    (match, i) => (
+                      <div
+                        key={i}
+                        className="relative inline-flex items-center group"
+                      >
+                        <img
+                          src={match[2]}
+                          alt={match[1] || "meme"}
+                          className="rounded-lg max-h-20 w-auto object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const escapedSrc = match[2].replace(
+                              /[.*+?^${}()|[\]\\]/g,
+                              "\\$&"
+                            );
+                            const imgRegex = new RegExp(
+                              `!\\[[^\\]]*\\]\\(${escapedSrc}\\)\\n?`,
+                              "g"
+                            );
+                            setInput((prev) =>
+                              prev.replace(imgRegex, "").trim()
+                            );
+                          }}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-foreground/80 hover:bg-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3 text-background" />
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+
+              {/* Normal textarea */}
+              <textarea
                 ref={inputRef}
-                type={
-                  (INPUT_CONFIG[sessionState.state] || INPUT_CONFIG.DEFAULT)
-                    .type
-                }
-                autoComplete="on"
-                spellCheck={true}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
+                value={input.replace(/!\[[^\]]*\]\([^)]+\)\n?/g, "")}
+                onChange={(e) => {
+                  // Preserve meme markdown, update text
+                  const memes = input.match(/!\[[^\]]*\]\([^)]+\)\n?/g) || [];
+                  const newText = e.target.value;
+                  setInput(memes.join("") + newText);
+                  // Auto-resize
+                  e.target.style.height = "auto";
+                  e.target.style.height =
+                    Math.min(e.target.scrollHeight, 100) + "px";
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (input.trim()) {
+                      handleSendMessage(e as unknown as React.FormEvent);
+                    }
+                  }
+                }}
                 placeholder={
                   (INPUT_CONFIG[sessionState.state] || INPUT_CONFIG.DEFAULT)
                     .placeholder
                 }
                 disabled={isLoading}
-                className="input-transparent flex-1 bg-transparent border-none outline-none px-2 py-2 sm:py-2.5 text-foreground placeholder:text-foreground/30 text-base min-w-0"
+                rows={1}
+                className="w-full bg-transparent border-none outline-none px-2 py-2 sm:py-2.5 text-foreground placeholder:text-foreground/30 text-base resize-none"
+                style={{ minHeight: "40px", maxHeight: "100px" }}
               />
             </div>
 
-            {/* Send button */}
+            {/* Send button - enabled when there's any content */}
             <motion.button
               type="submit"
               disabled={isLoading || !input.trim()}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.9 }}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-orange-500 text-white flex items-center justify-center disabled:opacity-30 disabled:scale-100 transition-all flex-shrink-0"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-orange-500 text-white flex items-center justify-center disabled:opacity-30 disabled:scale-100 transition-all flex-shrink-0 mb-0.5"
             >
               <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </motion.button>
           </div>
         </motion.form>
 
-        {/* Completion indicator and mentoring mode info */}
+        {/* Subtle mentoring mode hint */}
         <AnimatePresence>
-          {sessionState.completed && (
+          {sessionState.completed && !inMemeWar && (
             <motion.div
-              initial={{ opacity: 0, y: 10, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="text-center mt-3 pointer-events-none"
+              transition={{ duration: 0.3 }}
+              className="text-center mt-2"
             >
-              <motion.div
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-orange-500/20 to-amber-500/20 border border-orange-500/30"
-              >
-                <motion.span
-                  animate={{ rotate: [0, 10, -10, 0] }}
-                  transition={{ duration: 0.5, delay: 0.2 }}
-                  className="text-lg"
-                >
-                  🎉
-                </motion.span>
-                <span className="text-sm font-medium text-orange-400">
-                  application submitted!
+              <p className="text-xs text-foreground/40">
+                chat freely • ask questions • start a meme war
+              </p>
+            </motion.div>
+          )}
+          {inMemeWar && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="text-center mt-2"
+            >
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30">
+                <span className="text-sm">⚔️</span>
+                <span className="text-xs font-medium text-purple-400">
+                  meme war in progress
                 </span>
-                <motion.span
-                  animate={{ rotate: [0, -10, 10, 0] }}
-                  transition={{ duration: 0.5, delay: 0.3 }}
-                  className="text-lg"
-                >
-                  🎉
-                </motion.span>
-              </motion.div>
-              <p className="text-xs text-foreground/40 mt-2">
-                your application is under review
-              </p>
-              <p className="text-xs text-orange-400/60 mt-1">
-                ask me anything while you wait!
-              </p>
+                <span className="text-sm">⚔️</span>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
+
+      {/* Application Status Modal */}
+      <AnimatePresence>
+        {showStatusModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowStatusModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className="liquid-glass rounded-2xl p-6 max-w-sm w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center">
+                <div className="mb-4">
+                  <span className="text-4xl">
+                    {sessionState?.application_status === "accepted"
+                      ? "🎉"
+                      : sessionState?.application_status === "rejected"
+                      ? "😔"
+                      : sessionState?.application_status === "waitlisted"
+                      ? "⏳"
+                      : "📋"}
+                  </span>
+                </div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">
+                  {sessionState?.user_name
+                    ? `hey ${sessionState.user_name
+                        .split(" ")[0]
+                        .toLowerCase()}`
+                    : "application status"}
+                </h3>
+                <div
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 ${
+                    sessionState?.application_status === "accepted"
+                      ? "bg-green-500/20 text-green-400"
+                      : sessionState?.application_status === "rejected"
+                      ? "bg-red-500/20 text-red-400"
+                      : sessionState?.application_status === "waitlisted"
+                      ? "bg-yellow-500/20 text-yellow-400"
+                      : "bg-orange-500/20 text-orange-400"
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      sessionState?.application_status === "accepted"
+                        ? "bg-green-500"
+                        : sessionState?.application_status === "rejected"
+                        ? "bg-red-500"
+                        : sessionState?.application_status === "waitlisted"
+                        ? "bg-yellow-500"
+                        : "bg-orange-400 animate-pulse"
+                    }`}
+                  />
+                  <span className="text-sm font-medium">
+                    {sessionState?.application_status === "accepted"
+                      ? "accepted"
+                      : sessionState?.application_status === "rejected"
+                      ? "not accepted"
+                      : sessionState?.application_status === "waitlisted"
+                      ? "waitlisted"
+                      : "pending review"}
+                  </span>
+                </div>
+                <p className="text-sm text-foreground/60 mb-4">
+                  {sessionState?.application_status === "accepted"
+                    ? "welcome to the mentorship program! i'll be in touch soon with next steps."
+                    : sessionState?.application_status === "rejected"
+                    ? "thanks for applying. this cohort wasn't the right fit, but keep building and apply again."
+                    : sessionState?.application_status === "waitlisted"
+                    ? "you're on the waitlist. i'll reach out if a spot opens up."
+                    : "your application is being reviewed. i'll update you soon. feel free to chat while you wait!"}
+                </p>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setShowStatusModal(false)}
+                  className="w-full py-2.5 rounded-xl bg-foreground/10 hover:bg-foreground/15 text-foreground/80 text-sm font-medium transition-colors"
+                >
+                  got it
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

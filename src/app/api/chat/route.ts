@@ -3,6 +3,7 @@ import { genkit, z } from "genkit";
 import { googleAI } from "@genkit-ai/google-genai";
 import crypto from "crypto";
 import connectDB from "@/lib/mongodb";
+import { signToken, verifyToken, shouldRefreshToken } from "@/lib/jwt";
 
 // Hash function for secret phrase
 function hashSecretPhrase(phrase: string): string {
@@ -18,6 +19,12 @@ import Session, {
   type ISession,
   type IApplicantData,
 } from "@/lib/models/session";
+import Applicant, {
+  VERIFIABLE_FIELDS,
+  MIN_VERIFICATION_SCORE,
+  type IApplicant,
+} from "@/lib/models/applicant";
+import Feedback from "@/lib/models/feedback";
 
 // Initialize Genkit with Google AI
 const ai = genkit({
@@ -47,12 +54,12 @@ const DEFAULT_SUGGESTIONS: Record<OnboardingState, string[]> = {
     "build confidence",
   ],
   COMPLETED: [
-    "what's his tech stack?",
-    "how do i get accepted?",
-    "tell me about BBF Labs",
+    "let's have a meme war",
     "check my status",
-    "who is michael perry tettey?",
+    "tell me about the program",
+    "what's next?",
     "who is the mentor?",
+    "update my profile",
   ],
 };
 
@@ -294,7 +301,9 @@ Funfooling = playful hype expressions that make the conversation feel alive and 
 **WHEN TO FUNFOOL (DO IT!):**
 - User shares their email → "sharp sharp! let's get you in the system 📧"
 - User creates secret phrase → "correct! that's locked in 🔐"
-- User shares their name → "oya now ${session.applicant_data?.name || 'legend'}! nice to meet you 🤝"
+- User shares their name → "oya now ${
+    session.applicant_data?.name || "legend"
+  }! nice to meet you 🤝"
 - User shares GitHub → "kaishhh!!! let me peep this... 👀"
 - User has cool portfolio → "oh my role model! abeg make i kneel 🧎 this is clean!"
 - User shares impressive goals → "when i grow up i want to be like you fr fr"
@@ -389,14 +398,49 @@ ${
 - Ask for mentorship advice, code reviews, career guidance
 - Get help with technical problems
 - Discuss projects and ideas
-- Request resources and learning paths`
+- Request resources and learning paths
+- Have meme wars! 🎭`
     : `While **waiting for review**, they can:
 - Ask general questions about the program
 - Learn more about the mentor
 - Update their profile information
 - Check their application status
-- Ask basic coding questions (but full mentorship is after acceptance)`
+- Ask basic coding questions (but full mentorship is after acceptance)
+- Have fun with meme wars while they wait! 🎭`
 }
+
+## 🎭 MEME WARS (FUN FEATURE!)
+
+When user says something like "meme war", "let's battle with memes", "meme battle", "i challenge you to a meme war":
+
+1. Use \`start_meme_war\` tool with action="start" and a fun topic
+2. You go first! Use \`search_giphy\` to find a hilarious meme
+3. Tell them it's their turn (they have a meme picker button)
+4. When they send a meme, react to it and fire back with \`start_meme_war\` action="respond"
+5. Keep the banter going! Be competitive but playful
+6. After 3-5 rounds, use \`start_meme_war\` action="end" with a winner (usually let them win!)
+
+**Good topics for meme wars:**
+- "debugging at 3am"
+- "code review pain"
+- "css frustration"
+- "production bugs"
+- "meeting that could be email"
+- "imposter syndrome"
+- Or let the user pick!
+
+**Keep it fun and light!** This is about bonding, not serious competition.
+
+## FLEXIBLE CHAT MODE
+
+**IMPORTANT:** You don't have to force users into any specific flow now. They completed onboarding!
+- If they want to chat casually, chat casually
+- If they ask random questions, answer them
+- If they want to discuss tech, discuss it
+- If they want to joke around, joke around
+- If they want to have a meme war, have one!
+
+Be natural, be yourself (the funfooling AI), and let the conversation flow.
 
 ## HANDLING PROFILE UPDATES
 
@@ -421,7 +465,27 @@ Users can update their profile info anytime! If they want to:
 name, whatsapp, engineering_area, skill_level, improvement_goals, career_goals, github, linkedin, portfolio, projects, time_commitment, learning_style, tech_focus, success_definition
 
 **NOT updatable (ask them to contact support):**
-email (used for identification)`
+email (used for identification)
+
+## 💬 FEEDBACK (OPTIONAL)
+
+Users can optionally give feedback about their experience. NEVER pressure them - only collect if they offer or if conversation naturally ends well.
+
+**When user wants to give feedback:**
+- Call \`submit_feedback\` with their rating (1-5), feedback text, and/or suggestions
+- Thank them genuinely
+
+**Recognizing feedback intent:**
+- "this was great!", "i love this", "this is cool" → ask if they want to leave a rating
+- "i have some feedback", "can i suggest something" → use submit_feedback
+- "rate this 5 stars", "giving you 4/5" → submit the rating
+- After completing onboarding, you can casually mention: "feel free to share any feedback if you'd like!"
+
+**Categories:**
+- onboarding: feedback about the signup process
+- mentoring: feedback about advice/guidance received
+- ui: feedback about the interface
+- general: anything else`
     : `## ⚠️ CRITICAL TOOL CALLING REQUIREMENTS ⚠️
 
 **YOU MUST CALL TOOLS - THIS IS NON-NEGOTIABLE**
@@ -479,7 +543,14 @@ NEVER call multiple save_and_continue or data-modifying tools at the same time!
 - Parallel tool calls will cause database errors
 
 **TOOL DECISION LOGIC:**
-- If user provided email → Call save_and_continue with {"email": "their_email"}
+- If user provided email at AWAITING_EMAIL state:
+  1. FIRST call find_user_profile with their email to check if they're returning
+  2. Read the response to understand if they're new or returning
+  3. THEN call save_and_continue with {"email": "their_email"}
+  4. The save_and_continue tool will handle the returning user flow automatically
+  5. If returning user: welcome them back and ask for secret phrase verification
+  6. If new user: ask them to create a secret phrase
+
 - If state is AWAITING_SECRET_PHRASE AND this is a RETURNING USER → Call verify_secret_phrase with {"secret_phrase": "their_phrase"}
 - If state is AWAITING_SECRET_PHRASE AND this is a NEW USER → Call save_and_continue with {"secret_phrase": "their_phrase"}
 - If user provided GitHub URL → Call search_web first, then save_and_continue
@@ -488,14 +559,38 @@ NEVER call multiple save_and_continue or data-modifying tools at the same time!
 - For any other data (name, whatsapp, goals, etc.) → Call save_and_continue with the appropriate field
 
 **HOW TO IDENTIFY RETURNING VS NEW USER:**
-- RETURNING USER: You asked them to "enter" or "verify" their secret phrase (they created it before)
-- NEW USER: You asked them to "choose" or "create" a secret phrase (first time onboarding)
+- RETURNING USER: find_user_profile shows "Has Secret Phrase: YES" - they need to verify
+- NEW USER: find_user_profile shows "NO USER FOUND" or "Has Secret Phrase: NO"
+- You can also check: You asked them to "enter" or "verify" their secret phrase (returning) vs "choose" or "create" (new)
 
 **CRITICAL PHRASING FOR SECRET PHRASE:**
 - For NEW USERS (pending_verification === false): Ask them to **"choose a secret phrase"** or **"create a secret phrase"**
 - Explain: "this phrase is like a password - it helps us identify you if you return to continue your application later"
 - For RETURNING USERS (pending_verification === true): Ask them to **"enter your secret phrase"** to verify their identity
 - DO NOT ask "what was the secret phrase you were given" - they CREATE it, not receive it
+
+**🔐 ACCOUNT RECOVERY FLOW (when user forgets secret phrase):**
+When a returning user says they forgot their secret phrase, you have TWO options:
+
+1. **RECOVER** - Use if they want to try to verify their identity:
+   - Call \`initiate_recovery\` with their email
+   - If INSUFFICIENT_INFO: Tell them they didn't provide enough info during registration to verify. Offer to start fresh.
+   - If RECOVERY_STARTED: Ask verification questions one at a time (don't reveal their stored values!)
+   - After each answer, call \`verify_recovery_answer\` with the field and their answer
+   - Keep asking until they reach the verification threshold or run out of attempts
+   - Once VERIFIED: Call \`reset_secret_phrase\` with their new chosen phrase
+
+2. **START FRESH** - Use if they want to delete old data and restart:
+   - Call \`start_fresh\` with confirm: true (after they explicitly agree)
+   - This deletes their old application - make sure they understand this!
+
+**Recovery Verification Questions (ask these WITHOUT revealing stored values):**
+- GitHub: "what's your github username?"
+- LinkedIn: "what's your linkedin profile url or username?"
+- Portfolio: "what's the url of your portfolio website?"
+- WhatsApp: "what's the whatsapp number you registered with?"
+- Engineering area: "what engineering area did you say you focus on?"
+(Note: Name is NOT used for recovery since it's displayed in the UI)
 
 **⚠️ SECRET PHRASE INTELLIGENCE - WHEN TO SAVE VS ANSWER ⚠️**
 When in AWAITING_SECRET_PHRASE state, YOU MUST distinguish between:
@@ -642,7 +737,8 @@ const saveDataSchema = z.object({
 function createTools(
   session: ISession,
   saveSession: () => Promise<void>,
-  markPendingSave: () => void
+  markPendingSave: () => void,
+  authContext: { token?: string; tokenEmail?: string; sessionId: string }
 ) {
   // Build dynamic description based on current state
   const getToolDescription = () => {
@@ -959,9 +1055,48 @@ function createTools(
         )}. Ask the user for these before completing.`;
       }
 
+      // Set completion data
       session.state = "COMPLETED";
       session.applicant_data.submitted_at = new Date().toISOString();
       session.applicant_data.application_status = "pending";
+
+      // Create or update Applicant record (secure, standalone storage)
+      const applicantData = {
+        email: session.applicant_data.email,
+        secret_phrase_hash: session.applicant_data.secret_phrase, // Already hashed
+        name: session.applicant_data.name,
+        whatsapp: session.applicant_data.whatsapp,
+        engineering_area: session.applicant_data.engineering_area,
+        skill_level: session.applicant_data.skill_level,
+        improvement_goals: session.applicant_data.improvement_goals,
+        career_goals: session.applicant_data.career_goals,
+        github: session.applicant_data.github,
+        linkedin: session.applicant_data.linkedin,
+        portfolio: session.applicant_data.portfolio,
+        projects: session.applicant_data.projects,
+        time_commitment: session.applicant_data.time_commitment,
+        learning_style: session.applicant_data.learning_style,
+        tech_focus: session.applicant_data.tech_focus,
+        success_definition: session.applicant_data.success_definition,
+        submitted_at: session.applicant_data.submitted_at,
+        application_status: "pending" as const,
+      };
+
+      try {
+        await Applicant.findOneAndUpdate(
+          { email: session.applicant_data.email },
+          { $set: applicantData },
+          { upsert: true, new: true }
+        );
+        console.log(
+          "✅ Applicant record created/updated:",
+          session.applicant_data.email
+        );
+      } catch (err) {
+        console.error("Failed to create Applicant record:", err);
+        // Continue anyway - session data is still saved
+      }
+
       markPendingSave();
       console.log("Onboarding completed!");
       return `Application submitted! All required fields are filled. The application is now PENDING REVIEW. 
@@ -1038,60 +1173,97 @@ Celebrate the submission, but be clear this is just the first step!`;
 
   const searchWebTool = ai.defineTool(
     {
-      name: "search_web",
+      name: "analyze_url",
       description:
-        "Fetch and analyze a GitHub profile or portfolio website. DO NOT use for LinkedIn - it will fail. Returns the page content for you to analyze and give feedback on.",
+        "Fetch and analyze ANY URL - GitHub profiles, portfolios, blogs, documentation, articles, tutorials, or any web page. Use this to review user's work, research topics, or analyze resources they share. LinkedIn will fail due to their restrictions.",
       inputSchema: z.object({
-        url: z.string().describe("The URL to analyze (not LinkedIn)"),
+        url: z.string().describe("The URL to fetch and analyze"),
+        context: z
+          .string()
+          .optional()
+          .describe(
+            "Optional context about why you're analyzing this URL (e.g., 'portfolio review', 'github profile', 'learning resource', 'project demo')"
+          ),
       }),
       outputSchema: z.string(),
     },
     async (input) => {
+      console.log("🛠️ Tool executing: analyze_url", input.url);
+
       try {
+        // Normalize URL
+        let url = input.url.trim();
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+          url = `https://${url}`;
+        }
+
         // Skip LinkedIn - it always blocks
-        if (input.url.includes("linkedin.com")) {
-          return "LinkedIn profiles cannot be fetched (they block automated access). Just save the URL directly.";
+        if (url.includes("linkedin.com")) {
+          return "LinkedIn profiles cannot be fetched (they block automated access). Just save the URL directly and let them know you couldn't preview it.";
         }
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
-        const response = await fetch(input.url, {
+        const response = await fetch(url, {
           headers: {
             "User-Agent":
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             Accept:
-              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
           },
           signal: controller.signal,
+          redirect: "follow",
         });
 
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-          return `Could not fetch the page (status ${response.status}). The URL might be private or not exist. Just save it anyway.`;
+          return `Could not fetch the page (HTTP ${response.status}). The URL might be private, require login, or not exist. Just save it and mention you couldn't preview it.`;
         }
 
+        const contentType = response.headers.get("content-type") || "";
         const html = await response.text();
+
+        // Detect page type
+        const isGitHub = url.includes("github.com");
+        const isDevTo = url.includes("dev.to");
+        const isMedium =
+          url.includes("medium.com") || url.includes(".medium.com");
+        const isStackOverflow = url.includes("stackoverflow.com");
+        const isYouTube =
+          url.includes("youtube.com") || url.includes("youtu.be");
+        const isTwitterX = url.includes("twitter.com") || url.includes("x.com");
+        const isNpm = url.includes("npmjs.com");
+        const isDocs =
+          url.includes("docs.") ||
+          url.includes("/docs") ||
+          url.includes("documentation");
+        const isBlog =
+          url.includes("blog") ||
+          url.includes("/posts") ||
+          url.includes("/articles");
+        const isCodepen = url.includes("codepen.io");
+        const isReplit = url.includes("replit.com") || url.includes("repl.it");
+        const isVercel = url.includes("vercel.app");
+        const isNetlify = url.includes("netlify.app");
 
         // Clean up HTML - remove scripts, styles, and extract meaningful text
         const cleanHtml = html
-          // Remove script tags and content
           .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-          // Remove style tags and content
           .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-          // Remove SVG elements (they're often huge and not useful for text analysis)
           .replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "[SVG]")
-          // Remove HTML comments
           .replace(/<!--[\s\S]*?-->/g, "")
-          // Remove noscript tags
           .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "")
-          // Remove template tags
           .replace(/<template[^>]*>[\s\S]*?<\/template>/gi, "")
-          // Clean up excessive whitespace but preserve some structure
+          .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, (match) =>
+            match.length > 2000 ? "[Header content]" : match
+          )
+          .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "[Footer]")
+          .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "[Navigation]")
           .replace(/\s{3,}/g, "\n")
-          // Remove empty lines
-          .replace(/\n\s*\n/g, "\n");
+          .replace(/\n\s*\n\s*\n/g, "\n\n");
 
         // Extract key metadata
         const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
@@ -1099,54 +1271,126 @@ Celebrate the submission, but be clear this is just the first step!`;
 
         const descMatch =
           html.match(/<meta\s+name="description"\s+content="([^"]*)"/i) ||
-          html.match(/<meta\s+content="([^"]*)"[^>]*name="description"/i);
+          html.match(/<meta\s+content="([^"]*)"[^>]*name="description"/i) ||
+          html.match(/<meta\s+property="og:description"\s+content="([^"]*)"/i);
         const description = descMatch ? descMatch[1] : "";
 
-        // Truncate to reasonable size for AI context (keeping most important content)
-        const maxLength = 15000; // ~15k chars should capture most important content
+        // Extract Open Graph data for richer context
+        const ogImage =
+          html.match(/<meta\s+property="og:image"\s+content="([^"]*)"/i)?.[1] ||
+          "";
+        const ogType =
+          html.match(/<meta\s+property="og:type"\s+content="([^"]*)"/i)?.[1] ||
+          "";
+
+        // Get keywords if available
+        const keywords =
+          html.match(/<meta\s+name="keywords"\s+content="([^"]*)"/i)?.[1] || "";
+
+        // Truncate content
+        const maxLength = 20000;
         const truncatedHtml =
           cleanHtml.length > maxLength
             ? cleanHtml.slice(0, maxLength) + "\n\n[Content truncated...]"
             : cleanHtml;
 
-        const isGitHub = input.url.includes("github.com");
-        const pageType = isGitHub ? "GitHub Profile" : "Portfolio/Website";
+        // Determine page type label
+        let pageType = "Web Page";
+        let analysisHints = "";
 
-        return `=== ${pageType} Analysis Request ===
-URL: ${input.url}
+        if (isGitHub) {
+          if (url.includes("/blob/") || url.includes("/tree/")) {
+            pageType = "GitHub Repository/Code";
+            analysisHints = `- Repository structure and organization
+- Code quality indicators (README, license, documentation)
+- Technologies/languages used
+- Recent activity and maintenance status
+- Stars, forks, issues, and community engagement`;
+          } else {
+            pageType = "GitHub Profile";
+            analysisHints = `- Username, bio, and profile completeness
+- Number of repositories, followers, following
+- Pinned/featured repositories
+- Programming languages they use most
+- Contribution activity and consistency
+- Notable projects or achievements
+- Areas for improvement`;
+          }
+        } else if (isDevTo || isMedium || isBlog) {
+          pageType = "Blog/Article";
+          analysisHints = `- Article topic and main points
+- Writing quality and clarity
+- Technical depth
+- Engagement (likes, comments if visible)
+- Author's expertise level`;
+        } else if (isYouTube) {
+          pageType = "YouTube Video/Channel";
+          analysisHints = `- Video/channel topic
+- Content type (tutorial, review, etc.)
+- Production quality indicators
+- Engagement metrics if visible`;
+        } else if (isStackOverflow) {
+          pageType = "Stack Overflow";
+          analysisHints = `- Question/answer content
+- Technical context
+- Solution quality`;
+        } else if (isNpm) {
+          pageType = "NPM Package";
+          analysisHints = `- Package purpose and features
+- Documentation quality
+- Download stats and popularity
+- Dependencies and maintenance`;
+        } else if (isDocs) {
+          pageType = "Documentation";
+          analysisHints = `- Documentation topic
+- Completeness and clarity
+- Code examples
+- Useful for learning what`;
+        } else if (isCodepen || isReplit) {
+          pageType = "Code Playground";
+          analysisHints = `- Project type and purpose
+- Technologies used
+- Code quality and creativity
+- Functionality and interactivity`;
+        } else if (isVercel || isNetlify) {
+          pageType = "Deployed Project";
+          analysisHints = `- What the project does
+- Design and UX quality
+- Performance indicators
+- Technologies visible
+- Completeness and polish`;
+        } else {
+          pageType = input.context || "Portfolio/Website";
+          analysisHints = `- Overall purpose and content
+- Design and professionalism
+- Technologies/skills mentioned
+- Projects or work showcased
+- Contact information
+- Areas for improvement`;
+        }
+
+        return `=== URL Analysis: ${pageType} ===
+URL: ${url}
 Title: ${title}
 ${description ? `Description: ${description}` : ""}
+${ogType ? `Type: ${ogType}` : ""}
+${keywords ? `Keywords: ${keywords}` : ""}
+${input.context ? `Context: ${input.context}` : ""}
 
-=== Page Content (HTML) ===
+=== Page Content ===
 ${truncatedHtml}
 
-=== Your Task ===
-Analyze this ${pageType.toLowerCase()} content and provide specific, personalized feedback to the user. Look for:
-${
-  isGitHub
-    ? `- Username, bio, and profile info
-- Number of repositories, followers, following
-- Pinned/featured repositories and their descriptions
-- Programming languages they use
-- Contribution activity and streak
-- Any notable projects or achievements
-- Areas they could improve (more activity, better READMEs, etc.)`
-    : `- What sections exist (about, projects, skills, contact, blog)
-- Technologies/skills mentioned
-- Project showcases and descriptions
-- Design quality and professionalism
-- Social links present
-- What's missing or could be improved`
-}
+=== Analysis Guidelines ===
+${analysisHints}
 
-After analyzing, save the URL using save_and_continue and give them your personalized feedback!`;
+Provide specific, helpful feedback based on what you find. Be encouraging but honest about areas for improvement.`;
       } catch (error: unknown) {
-        console.error("Web search error:", error);
+        console.error("URL analysis error:", error);
         const errorMessage =
           error instanceof Error && error.name === "AbortError"
-            ? "Request timed out"
-            : "Could not access";
-        return `${errorMessage} that URL. Just save it anyway - you can mention you couldn't preview it.`;
+            ? "Request timed out (site took too long to respond)"
+            : "Could not access the URL";
+        return `${errorMessage}. Possible reasons: site is down, requires authentication, or blocks automated access. You can still save the URL and let the user know you couldn't preview it.`;
       }
     }
   );
@@ -1224,6 +1468,21 @@ After analyzing, save the URL using save_and_continue and give them your persona
       session.updated_at = new Date();
       markPendingSave();
 
+      // Also update Applicant model if user has completed onboarding
+      const email = session.applicant_data?.email;
+      if (email && session.state === "COMPLETED") {
+        try {
+          const updateData: Record<string, unknown> = {
+            [field]: session.applicant_data[field as keyof IApplicantData],
+            updated_at: new Date(),
+          };
+          await Applicant.findOneAndUpdate({ email }, { $set: updateData });
+          console.log("✅ Applicant record updated:", field);
+        } catch (err) {
+          console.error("Failed to update Applicant record:", err);
+        }
+      }
+
       const displayOld = oldValue || "(not set)";
       const displayNew = session.applicant_data[field as keyof IApplicantData];
 
@@ -1269,9 +1528,29 @@ After analyzing, save the URL using save_and_continue and give them your persona
     async () => {
       console.log("🛠️ Tool executing: check_application_status");
 
-      const status = session.applicant_data?.application_status || "pending";
-      const reviewNotes = session.applicant_data?.review_notes;
-      const reviewedAt = session.applicant_data?.reviewed_at;
+      // Check Applicant model first (source of truth for completed apps)
+      const email = session.applicant_data?.email;
+      let status = session.applicant_data?.application_status || "pending";
+      let reviewNotes = session.applicant_data?.review_notes;
+      let reviewedAt = session.applicant_data?.reviewed_at;
+
+      if (email) {
+        const applicant = await Applicant.findOne({ email });
+        if (applicant) {
+          status = applicant.application_status || "pending";
+          reviewNotes = applicant.review_notes;
+          reviewedAt = applicant.reviewed_at;
+
+          // Sync back to session if different
+          if (session.applicant_data.application_status !== status) {
+            session.applicant_data.application_status = status;
+            session.applicant_data.review_notes = reviewNotes;
+            session.applicant_data.reviewed_at = reviewedAt;
+            markPendingSave();
+          }
+        }
+      }
+
       const name = session.applicant_data?.name || "there";
 
       const statusMessages: Record<string, string> = {
@@ -1317,6 +1596,827 @@ Keep building and learning in the meantime. Feel free to update your profile or 
     }
   );
 
+  const logoutTool = ai.defineTool(
+    {
+      name: "logout_user",
+      description:
+        "Log out the user and return them to the landing page. Use this when the user explicitly asks to log out, sign out, exit, leave, or start over with a completely new account. Say goodbye and confirm the logout.",
+      inputSchema: z.object({}),
+      outputSchema: z.string(),
+    },
+    async () => {
+      console.log("🛠️ Tool executing: logout_user");
+
+      // Mark session for logout action
+      session.pending_action = "logout";
+      markPendingSave();
+
+      return "LOGOUT_TRIGGERED: User will be logged out and returned to landing page. Say a brief, friendly goodbye.";
+    }
+  );
+
+  const findProfileTool = ai.defineTool(
+    {
+      name: "find_user_profile",
+      description:
+        "Look up a user's complete profile by email. Use this BEFORE save_and_continue when user provides email at AWAITING_EMAIL state to check if they're a returning user. Checks both Session and Applicant models for complete profile data. Returns whether user exists, their progress state, and all profile data.",
+      inputSchema: z.object({
+        email: z.string().describe("The email address to look up"),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      const normalizedEmail = input.email.toLowerCase().trim();
+      console.log("🛠️ Tool executing: find_user_profile", normalizedEmail);
+
+      // Check both Session and Applicant models
+      const [userSession, applicant] = await Promise.all([
+        Session.findOne({ "applicant_data.email": normalizedEmail }),
+        Applicant.findOne({ email: normalizedEmail }),
+      ]);
+
+      // If we have an Applicant record, that's the source of truth for profile data
+      if (applicant) {
+        const isCurrentSession = userSession?.session_id === session.session_id;
+        const hasSecretPhrase = !!applicant.secret_phrase_hash;
+        const sessionState = userSession?.state || "COMPLETED";
+
+        return `=== USER FOUND (Applicant Record) ===
+Email: ${normalizedEmail}
+Is Current Session: ${
+          isCurrentSession ? "YES" : "NO - This is a DIFFERENT session"
+        }
+Has Secret Phrase: ${
+          hasSecretPhrase
+            ? "YES - User must verify"
+            : "NO - Incomplete registration"
+        }
+Onboarding State: ${sessionState}
+Application Status: ${applicant.application_status || "pending"}
+
+=== PROFILE DATA ===
+Name: ${applicant.name || "Not provided"}
+WhatsApp: ${applicant.whatsapp || "Not provided"}
+Engineering Area: ${applicant.engineering_area || "Not provided"}
+Skill Level: ${applicant.skill_level || "Not provided"}
+Improvement Goals: ${applicant.improvement_goals || "Not provided"}
+Career Goals: ${applicant.career_goals || "Not provided"}
+GitHub: ${applicant.github || "Not provided"}
+LinkedIn: ${applicant.linkedin || "Not provided"}
+Portfolio: ${applicant.portfolio || "Not provided"}
+Projects: ${applicant.projects || "Not provided"}
+Time Commitment: ${applicant.time_commitment || "Not provided"}
+Learning Style: ${applicant.learning_style || "Not provided"}
+Tech Focus: ${applicant.tech_focus || "Not provided"}
+Success Definition: ${applicant.success_definition || "Not provided"}
+${applicant.submitted_at ? `Submitted At: ${applicant.submitted_at}` : ""}
+${applicant.reviewed_at ? `Reviewed At: ${applicant.reviewed_at}` : ""}
+${applicant.review_notes ? `Review Notes: ${applicant.review_notes}` : ""}
+Created: ${applicant.created_at?.toLocaleDateString() || "Unknown"}
+Recovery Attempts: ${applicant.recovery_attempts || 0}
+
+=== NEXT STEPS ===
+${
+  isCurrentSession
+    ? "This is the current user's session. Continue with normal flow."
+    : hasSecretPhrase
+    ? "⚠️ RETURNING USER DETECTED! After saving email with save_and_continue, the system will automatically require secret phrase verification. Tell them 'welcome back!' and ask them to enter their secret phrase."
+    : "User started before but never completed registration. Their old data will be cleared when you save_and_continue with this email."
+}`;
+      }
+
+      // Fall back to Session-only lookup (for users who haven't completed onboarding)
+      if (userSession) {
+        const profile = userSession.applicant_data;
+        const isCurrentSession = userSession.session_id === session.session_id;
+        const hasSecretPhrase = !!profile.secret_phrase;
+        const isCompleted = userSession.state === "COMPLETED";
+
+        return `=== USER FOUND (Session Only) ===
+Email: ${normalizedEmail}
+Is Current Session: ${
+          isCurrentSession ? "YES" : "NO - This is a DIFFERENT session"
+        }
+Has Secret Phrase: ${
+          hasSecretPhrase
+            ? "YES - User must verify"
+            : "NO - Incomplete registration"
+        }
+Onboarding State: ${userSession.state}
+Application Status: ${profile.application_status || "not submitted"}
+
+=== PROFILE DATA ===
+Name: ${profile.name || "Not provided"}
+WhatsApp: ${profile.whatsapp || "Not provided"}
+Engineering Area: ${profile.engineering_area || "Not provided"}
+Skill Level: ${profile.skill_level || "Not provided"}
+Improvement Goals: ${profile.improvement_goals || "Not provided"}
+Career Goals: ${profile.career_goals || "Not provided"}
+GitHub: ${profile.github || "Not provided"}
+LinkedIn: ${profile.linkedin || "Not provided"}
+Portfolio: ${profile.portfolio || "Not provided"}
+Projects: ${profile.projects || "Not provided"}
+Time Commitment: ${profile.time_commitment || "Not provided"}
+Learning Style: ${profile.learning_style || "Not provided"}
+Tech Focus: ${profile.tech_focus || "Not provided"}
+Success Definition: ${profile.success_definition || "Not provided"}
+${isCompleted ? `Submitted At: ${profile.submitted_at || "Unknown"}` : ""}
+
+=== NEXT STEPS ===
+${
+  isCurrentSession
+    ? "This is the current user's session. Continue with normal flow."
+    : hasSecretPhrase
+    ? "⚠️ RETURNING USER DETECTED! After saving email with save_and_continue, the system will automatically require secret phrase verification. Tell them 'welcome back!' and ask them to enter their secret phrase."
+    : "User started before but never set a secret phrase. Their old data will be cleared when you save_and_continue with this email."
+}`;
+      }
+
+      return `=== NO USER FOUND ===
+Email: ${normalizedEmail}
+Status: New user - no existing profile
+
+=== NEXT STEPS ===
+This is a brand new user! Proceed with save_and_continue to save their email and move to the secret phrase step.`;
+    }
+  );
+
+  // Remove local VERIFIABLE_FIELDS definition - use imported one from applicant.ts
+
+  const initiateRecoveryTool = ai.defineTool(
+    {
+      name: "initiate_recovery",
+      description:
+        "Start the account recovery process for a user who forgot their secret phrase. Call this when user says they forgot their phrase and want to recover (not start fresh). Checks both Applicant and Session models for verifiable info.",
+      inputSchema: z.object({
+        email: z.string().describe("The email of the account to recover"),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      const normalizedEmail = input.email.toLowerCase().trim();
+      console.log("🛠️ Tool executing: initiate_recovery", normalizedEmail);
+
+      // Check both Applicant model (preferred) and Session model
+      const [applicant, existingSession] = await Promise.all([
+        Applicant.findOne({ email: normalizedEmail }),
+        Session.findOne({ "applicant_data.email": normalizedEmail }),
+      ]);
+
+      // Use Applicant model if available (source of truth for completed registrations)
+      const profile = applicant || existingSession?.applicant_data;
+      const hasSecretPhrase = applicant
+        ? !!applicant.secret_phrase_hash
+        : !!existingSession?.applicant_data?.secret_phrase;
+
+      if (!profile && !existingSession) {
+        return "NO_ACCOUNT: No account found with this email. They need to start fresh with a new registration.";
+      }
+
+      if (!hasSecretPhrase) {
+        return "NO_SECRET_PHRASE: Account exists but no secret phrase was set. They can just continue registration normally.";
+      }
+
+      // Calculate what verifiable fields they have
+      const availableFields = VERIFIABLE_FIELDS.filter((f) => {
+        const value = profile?.[f.key as keyof typeof profile];
+        return value && typeof value === "string" && value.trim().length > 0;
+      });
+
+      const totalPossibleScore = availableFields.reduce(
+        (sum, f) => sum + f.weight,
+        0
+      );
+
+      // Track recovery attempts for rate limiting (only for Applicant model)
+      if (applicant) {
+        const lastAttempt = applicant.last_recovery_attempt;
+        const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+        if (
+          applicant.recovery_attempts >= 5 &&
+          lastAttempt &&
+          lastAttempt > hourAgo
+        ) {
+          return `RATE_LIMITED: Too many recovery attempts. The user has tried ${applicant.recovery_attempts} times. Ask them to wait an hour before trying again, or try to remember their secret phrase.`;
+        }
+
+        // Update recovery attempt tracking
+        applicant.recovery_attempts += 1;
+        applicant.last_recovery_attempt = new Date();
+        await applicant.save();
+      }
+
+      if (totalPossibleScore < MIN_VERIFICATION_SCORE) {
+        // Not enough info to verify - offer to delete and start fresh
+        session.pending_recovery = {
+          email: normalizedEmail,
+          verified_fields: [],
+          verification_score: 0,
+          attempts: 0,
+        };
+        markPendingSave();
+
+        return `INSUFFICIENT_INFO: The account doesn't have enough verifiable information to recover.
+
+Available info: ${availableFields.map((f) => f.label).join(", ") || "None"}
+Score: ${totalPossibleScore}/${MIN_VERIFICATION_SCORE} required
+
+Options:
+1. Delete old account and start fresh (use start_fresh tool with confirm: true after they agree)
+2. Try to remember their secret phrase
+
+Tell the user they didn't provide enough unique identifying information during registration to verify their identity. Ask if they want to try remembering their phrase or start fresh (which will delete their old data).`;
+      }
+
+      // Initialize recovery state
+      session.pending_recovery = {
+        email: normalizedEmail,
+        verified_fields: [],
+        verification_score: 0,
+        attempts: 0,
+      };
+      markPendingSave();
+
+      // Pick the first unverified field to ask about
+      const firstField = availableFields[0];
+      const userName =
+        applicant?.name || existingSession?.applicant_data?.name || "Not set";
+
+      return `RECOVERY_STARTED: Account found with enough info to verify!
+
+Email: ${normalizedEmail}
+Name on account: ${userName}
+Data source: ${applicant ? "Applicant (secure)" : "Session"}
+Verifiable fields available: ${availableFields.map((f) => f.label).join(", ")}
+Total verification score possible: ${totalPossibleScore}/${MIN_VERIFICATION_SCORE} required
+
+Ask them to verify their ${
+        firstField.label
+      }. After they answer, use verify_recovery_answer to check it.
+DO NOT tell them what values are on file - ask them to provide the info themselves.`;
+    }
+  );
+
+  const verifyRecoveryAnswerTool = ai.defineTool(
+    {
+      name: "verify_recovery_answer",
+      description:
+        "Verify a user's answer during account recovery. Call this after asking them a verification question.",
+      inputSchema: z.object({
+        field: z
+          .string()
+          .describe(
+            "The field being verified: github, linkedin, portfolio, whatsapp, name, or engineering_area"
+          ),
+        user_answer: z
+          .string()
+          .describe("What the user provided as their answer"),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log("🛠️ Tool executing: verify_recovery_answer", input);
+
+      if (!session.pending_recovery) {
+        return "ERROR: No recovery in progress. Use initiate_recovery first.";
+      }
+
+      // Check both Applicant and Session models
+      const [applicant, existingSession] = await Promise.all([
+        Applicant.findOne({ email: session.pending_recovery.email }),
+        Session.findOne({
+          "applicant_data.email": session.pending_recovery.email,
+        }),
+      ]);
+
+      if (!applicant && !existingSession) {
+        session.pending_recovery = undefined;
+        markPendingSave();
+        return "ERROR: Account no longer exists. Recovery cancelled.";
+      }
+
+      // Use Applicant model as source of truth if available
+      const profile = applicant || existingSession?.applicant_data;
+      const storedValue = profile?.[input.field as keyof typeof profile];
+      const fieldConfig = VERIFIABLE_FIELDS.find((f) => f.key === input.field);
+
+      if (!fieldConfig || !storedValue) {
+        return `ERROR: Field '${input.field}' is not available for verification.`;
+      }
+
+      // Normalize and compare values
+      const normalizedStored = String(storedValue).toLowerCase().trim();
+      const normalizedAnswer = input.user_answer.toLowerCase().trim();
+
+      // For URLs, extract the key part (username/path)
+      let isMatch = false;
+      if (
+        input.field === "github" ||
+        input.field === "linkedin" ||
+        input.field === "portfolio"
+      ) {
+        // Extract username/path from both
+        const storedPath = normalizedStored
+          .replace(/^https?:\/\//, "")
+          .replace(/^www\./, "")
+          .replace(/\/$/, "");
+        const answerPath = normalizedAnswer
+          .replace(/^https?:\/\//, "")
+          .replace(/^www\./, "")
+          .replace(/\/$/, "")
+          .replace(/^@/, "");
+
+        isMatch =
+          storedPath.includes(answerPath) || answerPath.includes(storedPath);
+      } else if (input.field === "whatsapp") {
+        // Compare just digits
+        const storedDigits = normalizedStored.replace(/\D/g, "");
+        const answerDigits = normalizedAnswer.replace(/\D/g, "");
+        isMatch =
+          storedDigits === answerDigits ||
+          storedDigits.endsWith(answerDigits) ||
+          answerDigits.endsWith(storedDigits);
+      } else {
+        // Exact or fuzzy match for name/engineering_area
+        isMatch =
+          normalizedStored === normalizedAnswer ||
+          normalizedStored.includes(normalizedAnswer) ||
+          normalizedAnswer.includes(normalizedStored);
+      }
+
+      session.pending_recovery.attempts += 1;
+
+      if (isMatch) {
+        // Add to verified fields and update score
+        if (!session.pending_recovery.verified_fields.includes(input.field)) {
+          session.pending_recovery.verified_fields.push(input.field);
+          session.pending_recovery.verification_score += fieldConfig.weight;
+        }
+        markPendingSave();
+
+        // Check if we've reached the threshold
+        if (
+          session.pending_recovery.verification_score >= MIN_VERIFICATION_SCORE
+        ) {
+          return `VERIFIED: ✅ ${fieldConfig.label} matches!
+
+Identity verified! Score: ${session.pending_recovery.verification_score}/${MIN_VERIFICATION_SCORE}
+
+The user has proven their identity. Now use reset_secret_phrase tool to let them set a new secret phrase.`;
+        }
+
+        // Need more verification - find next field
+        const availableFields = VERIFIABLE_FIELDS.filter((f) => {
+          const value = profile?.[f.key as keyof typeof profile];
+          return (
+            value &&
+            typeof value === "string" &&
+            value.trim().length > 0 &&
+            !session.pending_recovery?.verified_fields.includes(f.key)
+          );
+        });
+
+        if (availableFields.length === 0) {
+          return `PARTIAL_VERIFIED: ✅ ${fieldConfig.label} matches, but score is only ${session.pending_recovery.verification_score}/${MIN_VERIFICATION_SCORE}.
+
+No more fields to verify. They don't have enough info on file. Ask if they want to try remembering their phrase or start fresh.`;
+        }
+
+        const nextField = availableFields[0];
+        return `CORRECT: ✅ ${fieldConfig.label} matches!
+
+Current score: ${
+          session.pending_recovery.verification_score
+        }/${MIN_VERIFICATION_SCORE} required
+Need ${
+          MIN_VERIFICATION_SCORE - session.pending_recovery.verification_score
+        } more points.
+
+Ask them to verify their ${nextField.label} next.`;
+      } else {
+        markPendingSave();
+
+        if (session.pending_recovery.attempts >= 5) {
+          return `FAILED: ❌ Too many incorrect attempts (${session.pending_recovery.attempts}).
+
+For security, recovery is locked. They can:
+1. Try remembering their secret phrase
+2. Start fresh with a new account (will delete old data)`;
+        }
+
+        return `INCORRECT: ❌ ${fieldConfig.label} doesn't match our records.
+
+Attempts: ${session.pending_recovery.attempts}/5
+Ask if they want to try again with the correct ${fieldConfig.label}, verify a different field, or give up.`;
+      }
+    }
+  );
+
+  const resetSecretPhraseTool = ai.defineTool(
+    {
+      name: "reset_secret_phrase",
+      description:
+        "Reset a user's secret phrase after successful identity verification during recovery. Only call this after verify_recovery_answer returns VERIFIED. Updates both Applicant and Session models.",
+      inputSchema: z.object({
+        new_phrase: z
+          .string()
+          .describe("The new secret phrase chosen by the user"),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log("🛠️ Tool executing: reset_secret_phrase");
+
+      if (!session.pending_recovery) {
+        return "ERROR: No recovery in progress.";
+      }
+
+      if (
+        session.pending_recovery.verification_score < MIN_VERIFICATION_SCORE
+      ) {
+        return `ERROR: Identity not sufficiently verified. Score: ${session.pending_recovery.verification_score}/${MIN_VERIFICATION_SCORE} required.`;
+      }
+
+      const recoveryEmail = session.pending_recovery.email;
+
+      // Check both Applicant and Session models
+      const [applicant, existingSession] = await Promise.all([
+        Applicant.findOne({ email: recoveryEmail }),
+        Session.findOne({ "applicant_data.email": recoveryEmail }),
+      ]);
+
+      if (!applicant && !existingSession) {
+        session.pending_recovery = undefined;
+        markPendingSave();
+        return "ERROR: Account no longer exists.";
+      }
+
+      // Hash the new secret phrase
+      const hashedPhrase = hashSecretPhrase(input.new_phrase);
+
+      // Update Applicant model if exists (source of truth)
+      if (applicant) {
+        applicant.secret_phrase_hash = hashedPhrase;
+        applicant.recovery_attempts = 0; // Reset recovery attempts on successful recovery
+        applicant.updated_at = new Date();
+        await applicant.save();
+        console.log("✅ Updated Applicant model with new secret phrase");
+      }
+
+      // Also update Session model if exists
+      if (existingSession) {
+        existingSession.applicant_data.secret_phrase = hashedPhrase;
+        await existingSession.save();
+
+        // Set up this session to continue as the recovered user
+        session.applicant_data = { ...existingSession.applicant_data };
+        session.applicant_data.secret_phrase = hashedPhrase;
+        session.state = existingSession.state;
+
+        // Delete the old session if different from current
+        if (existingSession.session_id !== session.session_id) {
+          await Session.deleteOne({ session_id: existingSession.session_id });
+        }
+      } else if (applicant) {
+        // Only Applicant record exists, set up session from it
+        session.applicant_data = {
+          email: applicant.email,
+          secret_phrase: hashedPhrase,
+          name: applicant.name,
+          whatsapp: applicant.whatsapp,
+          engineering_area: applicant.engineering_area,
+          skill_level: applicant.skill_level,
+          improvement_goals: applicant.improvement_goals,
+          career_goals: applicant.career_goals,
+          github: applicant.github,
+          linkedin: applicant.linkedin,
+          portfolio: applicant.portfolio,
+          projects: applicant.projects,
+          time_commitment: applicant.time_commitment,
+          learning_style: applicant.learning_style,
+          tech_focus: applicant.tech_focus,
+          success_definition: applicant.success_definition,
+          application_status: applicant.application_status,
+          submitted_at: applicant.submitted_at,
+          review_notes: applicant.review_notes,
+          reviewed_at: applicant.reviewed_at,
+        };
+        session.state = "COMPLETED"; // Applicant records are for completed users
+      }
+
+      session.pending_recovery = undefined;
+      session.pending_verification = undefined;
+      markPendingSave();
+
+      console.log("✅ Secret phrase reset successfully for:", recoveryEmail);
+
+      return `SUCCESS: Secret phrase has been reset!
+
+Welcome back ${
+        session.applicant_data.name || ""
+      }! Your account has been recovered and you can continue where you left off.
+
+Current state: ${session.state}
+${
+  session.state === "COMPLETED"
+    ? "Your application is already submitted!"
+    : "Let's continue your onboarding."
+}`;
+    }
+  );
+
+  const cancelRecoveryTool = ai.defineTool(
+    {
+      name: "cancel_recovery",
+      description: "Cancel an ongoing recovery process.",
+      inputSchema: z.object({}),
+      outputSchema: z.string(),
+    },
+    async () => {
+      console.log("🛠️ Tool executing: cancel_recovery");
+
+      if (!session.pending_recovery) {
+        return "No recovery was in progress.";
+      }
+
+      session.pending_recovery = undefined;
+      markPendingSave();
+
+      return "Recovery cancelled. Ask what they'd like to do instead - try their secret phrase again, start fresh, or something else.";
+    }
+  );
+
+  const submitFeedbackTool = ai.defineTool(
+    {
+      name: "submit_feedback",
+      description:
+        "Submit user feedback about their experience. Use this when users want to give feedback, rate the experience, or suggest improvements. This is OPTIONAL - never pressure users to give feedback.",
+      inputSchema: z.object({
+        rating: z
+          .number()
+          .min(1)
+          .max(5)
+          .describe("Rating from 1-5 stars (1=poor, 5=excellent)"),
+        feedback: z
+          .string()
+          .optional()
+          .describe("General feedback or what they liked"),
+        suggestions: z
+          .string()
+          .optional()
+          .describe("Suggestions for improvement"),
+        category: z
+          .enum(["onboarding", "mentoring", "ui", "general"])
+          .optional()
+          .describe("Category of feedback"),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log("🛠️ Tool executing: submit_feedback", input);
+
+      try {
+        const feedbackDoc = new Feedback({
+          session_id: session.session_id,
+          email: session.applicant_data?.email,
+          name: session.applicant_data?.name,
+          rating: input.rating,
+          feedback: input.feedback,
+          suggestions: input.suggestions,
+          category: input.category || "general",
+          onboarding_state: session.state,
+        });
+
+        await feedbackDoc.save();
+        console.log("✅ Feedback saved successfully");
+
+        const starEmoji = "⭐".repeat(input.rating);
+        return `FEEDBACK_SAVED: Thank you for the ${starEmoji} rating!${
+          input.feedback ? " Your feedback has been recorded." : ""
+        }${
+          input.suggestions ? " Your suggestions will help us improve!" : ""
+        } We really appreciate you taking the time to share your thoughts.`;
+      } catch (error) {
+        console.error("Failed to save feedback:", error);
+        return "ERROR: Failed to save feedback. Please try again later.";
+      }
+    }
+  );
+
+  // === AUTHENTICATION TOOLS ===
+
+  const checkAuthStatusTool = ai.defineTool(
+    {
+      name: "check_auth_status",
+      description:
+        "Check the current authentication status of the user. Use this when you need to know if the user is properly authenticated, when their session expires, or to troubleshoot auth issues.",
+      inputSchema: z.object({}),
+      outputSchema: z.string(),
+    },
+    async () => {
+      console.log("🛠️ Tool executing: check_auth_status");
+
+      const hasToken = !!authContext.token;
+      const hasEmail = !!session.applicant_data?.email;
+      const sessionAge = session.created_at
+        ? Math.round(
+            (Date.now() - new Date(session.created_at).getTime()) / 1000 / 60
+          )
+        : 0;
+
+      let tokenInfo = "No token present";
+      let tokenExpiry = "N/A";
+
+      if (authContext.token) {
+        const decoded = verifyToken(authContext.token);
+        if (decoded && decoded.exp) {
+          const expiresIn = Math.round(
+            (decoded.exp * 1000 - Date.now()) / 1000 / 60
+          );
+          tokenExpiry = expiresIn > 0 ? `${expiresIn} minutes` : "EXPIRED";
+          tokenInfo = decoded.email || "No email in token";
+        } else {
+          tokenInfo = "Invalid or expired token";
+        }
+      }
+
+      return `=== AUTH STATUS ===
+Authenticated: ${hasToken && hasEmail ? "YES ✓" : "PARTIAL"}
+Token Present: ${hasToken ? "YES" : "NO"}
+Token Email: ${tokenInfo}
+Session Email: ${session.applicant_data?.email || "Not set"}
+Session ID: ${authContext.sessionId}
+Session Age: ${sessionAge} minutes
+Token Expires In: ${tokenExpiry}
+Onboarding State: ${session.state}
+
+=== SECURITY STATUS ===
+Has Secret Phrase: ${
+        session.applicant_data?.secret_phrase ? "YES (hashed)" : "NO"
+      }
+Email Verified: ${hasEmail ? "YES" : "NO"}
+Session Valid: ${session.session_id ? "YES" : "NO"}`;
+    }
+  );
+
+  const getSessionInfoTool = ai.defineTool(
+    {
+      name: "get_session_info",
+      description:
+        "Get detailed information about the current session. Use this to provide users with session details, debug issues, or when they ask about their session/account.",
+      inputSchema: z.object({}),
+      outputSchema: z.string(),
+    },
+    async () => {
+      console.log("🛠️ Tool executing: get_session_info");
+
+      const profile = session.applicant_data;
+      const messageCount = session.messages?.length || 0;
+      const createdAt = session.created_at
+        ? new Date(session.created_at).toLocaleString()
+        : "Unknown";
+      const updatedAt = session.updated_at
+        ? new Date(session.updated_at).toLocaleString()
+        : "Unknown";
+
+      return `=== SESSION INFO ===
+Session ID: ${session.session_id.substring(
+        0,
+        8
+      )}...${session.session_id.substring(session.session_id.length - 4)}
+Created: ${createdAt}
+Last Updated: ${updatedAt}
+Message Count: ${messageCount}
+Current State: ${session.state}
+
+=== USER INFO ===
+Email: ${profile?.email || "Not provided"}
+Name: ${profile?.name || "Not provided"}
+Application Status: ${profile?.application_status || "Not submitted"}
+
+=== SESSION ACTIVITY ===
+Processed Messages: ${session.processed_messages?.length || 0}
+Has Pending Recovery: ${session.pending_recovery ? "YES" : "NO"}
+Has Pending Action: ${session.pending_action || "NONE"}`;
+    }
+  );
+
+  const invalidateSessionTool = ai.defineTool(
+    {
+      name: "invalidate_session",
+      description:
+        "Invalidate the current session for security reasons. Use this ONLY when there's a security concern like suspected unauthorized access, the user explicitly requests to secure their account, or during account recovery failures. This will force re-authentication.",
+      inputSchema: z.object({
+        reason: z
+          .string()
+          .describe(
+            "The reason for invalidating the session (for logging purposes)"
+          ),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log("🛠️ Tool executing: invalidate_session", input.reason);
+
+      // Mark session for logout/re-auth
+      session.pending_action = "logout";
+
+      // Clear any pending recovery to prevent abuse
+      session.pending_recovery = undefined;
+
+      markPendingSave();
+
+      return `SESSION_INVALIDATED: Session marked for termination due to: ${input.reason}. User will need to re-authenticate. Inform them their session has been secured and they'll need to log in again.`;
+    }
+  );
+
+  const extendSessionTool = ai.defineTool(
+    {
+      name: "extend_session",
+      description:
+        "Extend the user's session when they're actively engaged. Use this when the user has been chatting for a while and might be close to session expiry, or when they explicitly ask to stay logged in longer. This refreshes their authentication token.",
+      inputSchema: z.object({}),
+      outputSchema: z.string(),
+    },
+    async () => {
+      console.log("🛠️ Tool executing: extend_session");
+
+      const email = session.applicant_data?.email;
+      if (!email) {
+        return "CANNOT_EXTEND: User email not set. Session extension requires a verified email.";
+      }
+
+      // Generate a fresh token (will be included in response automatically)
+      const newToken = signToken({ email, sessionId: session.session_id });
+      const decoded = verifyToken(newToken);
+      const expiresAt = decoded?.exp
+        ? new Date(decoded.exp * 1000).toLocaleTimeString()
+        : "2 hours from now";
+
+      return `SESSION_EXTENDED: New token generated. Session will now expire at approximately ${expiresAt}. User can continue without interruption.`;
+    }
+  );
+
+  // Meme War Tool - for fun post-completion engagement
+  const startMemeWarTool = ai.defineTool(
+    {
+      name: "start_meme_war",
+      description:
+        "Start a meme war with the user! Only use when user is in COMPLETED state and explicitly wants to have a meme battle. The AI and user take turns sending the funniest/most relevant memes on a chosen topic. Use search_giphy to find your memes.",
+      inputSchema: z.object({
+        topic: z
+          .string()
+          .describe(
+            "The meme war topic/theme (e.g., 'programming fails', 'debugging at 3am', 'code reviews')"
+          ),
+        action: z
+          .enum(["start", "respond", "end"])
+          .describe(
+            "start: begin a new meme war, respond: send your meme in an ongoing war, end: declare winner and end the war"
+          ),
+        winner: z
+          .string()
+          .optional()
+          .describe(
+            "When ending the war, who won? 'user', 'ai', or 'tie'. Be generous to the user!"
+          ),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      console.log("🛠️ Tool executing: start_meme_war", input);
+
+      if (session.state !== "COMPLETED") {
+        return "MEME_WAR_ERROR: User must complete onboarding before starting a meme war!";
+      }
+
+      if (input.action === "start") {
+        session.pending_action = "meme_war";
+        markPendingSave();
+        return `MEME_WAR_STARTED: Topic is "${input.topic}". You go first! Search for a hilarious meme using search_giphy and throw your best shot. Tell the user it's their turn after. Keep track of rounds mentally (usually 3-5 rounds is good). Be playful and competitive!`;
+      }
+
+      if (input.action === "respond") {
+        return `MEME_WAR_CONTINUE: Your turn to fire back! Use search_giphy to find a meme that tops theirs. Be creative with your search terms. Comment on their meme before showing yours. Keep the energy fun and competitive!`;
+      }
+
+      if (input.action === "end") {
+        session.pending_action = null;
+        markPendingSave();
+        const winnerText =
+          input.winner === "user"
+            ? "The user crushed it! Declare them the winner graciously. 🏆"
+            : input.winner === "ai"
+            ? "You won! But be humble about it. Maybe they'll get you next time. 😎"
+            : "It's a tie! Both brought the heat. Call it a draw and suggest a rematch. 🤝";
+        return `MEME_WAR_ENDED: ${winnerText} Suggest they can start another war anytime with "let's have a meme war"`;
+      }
+
+      return "MEME_WAR_ERROR: Invalid action. Use 'start', 'respond', or 'end'.";
+    }
+  );
+
   return [
     saveAndContinueTool,
     verifySecretPhraseTool,
@@ -1327,6 +2427,18 @@ Keep building and learning in the meantime. Feel free to update your profile or 
     updateProfileTool,
     setSuggestionsTool,
     checkStatusTool,
+    logoutTool,
+    findProfileTool,
+    initiateRecoveryTool,
+    verifyRecoveryAnswerTool,
+    resetSecretPhraseTool,
+    cancelRecoveryTool,
+    submitFeedbackTool,
+    checkAuthStatusTool,
+    getSessionInfoTool,
+    invalidateSessionTool,
+    extendSessionTool,
+    startMemeWarTool,
   ];
 }
 
@@ -1335,11 +2447,37 @@ export async function POST(request: NextRequest) {
     await connectDB();
 
     const body = await request.json();
-    const { session_id, message_id, user_input, action = "chat" } = body;
+    const { token, message_id, user_input, action = "chat" } = body;
 
-    if (!session_id || !message_id) {
+    // For init action, we create a new session and issue a token
+    // For other actions, we need a valid token
+    let session_id: string;
+    let email: string | undefined;
+
+    if (action === "init") {
+      // New session - generate session ID
+      session_id = crypto.randomUUID();
+    } else if (token) {
+      // Verify existing token
+      const payload = verifyToken(token);
+      if (!payload) {
+        return NextResponse.json(
+          { error: "Invalid or expired token. Please start a new session." },
+          { status: 401 }
+        );
+      }
+      session_id = payload.sessionId;
+      email = payload.email;
+    } else {
       return NextResponse.json(
-        { error: "Missing session_id or message_id" },
+        { error: "Token required for this action" },
+        { status: 401 }
+      );
+    }
+
+    if (!message_id) {
+      return NextResponse.json(
+        { error: "Missing message_id" },
         { status: 400 }
       );
     }
@@ -1351,13 +2489,26 @@ export async function POST(request: NextRequest) {
         session_id,
         state: "AWAITING_EMAIL",
         messages: [],
-        applicant_data: {},
+        applicant_data: email ? { email } : {},
         processed_messages: [],
         suggestions: [],
       });
       await session.save();
       console.log("New session created:", session_id);
     }
+
+    // Helper function to generate token for response
+    const generateResponseToken = () => {
+      const sessionEmail = session!.applicant_data?.email || email || "";
+      if (sessionEmail) {
+        return signToken({ email: sessionEmail, sessionId: session_id });
+      }
+      // For sessions without email yet, create a temporary token
+      return signToken({
+        email: `pending_${session_id}`,
+        sessionId: session_id,
+      });
+    };
 
     const saveSession = async () => {
       await session!.save();
@@ -1368,6 +2519,7 @@ export async function POST(request: NextRequest) {
       const lastMessage = session.messages[session.messages.length - 1];
       return NextResponse.json({
         assistant_message: lastMessage?.content || "try again.",
+        token: generateResponseToken(),
         server_state: {
           session_id: session.session_id,
           state: session.state,
@@ -1388,6 +2540,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         assistant_message: WELCOME_MESSAGE,
+        token: generateResponseToken(),
         server_state: {
           session_id: session.session_id,
           state: session.state,
@@ -1411,6 +2564,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         assistant_message: resumeMessage,
+        token: generateResponseToken(),
         server_state: {
           session_id: session.session_id,
           state: session.state,
@@ -1434,8 +2588,12 @@ export async function POST(request: NextRequest) {
       needsSave = true;
     };
 
-    // Create dynamic tools with session context
-    const tools = createTools(session, saveSession, markPendingSave);
+    // Create dynamic tools with session and auth context
+    const tools = createTools(session, saveSession, markPendingSave, {
+      token,
+      tokenEmail: email,
+      sessionId: session_id,
+    });
 
     try {
       const systemPrompt = buildSystemPrompt(session);
@@ -1496,6 +2654,14 @@ export async function POST(request: NextRequest) {
       const updatedSession = await Session.findOne({ session_id });
       const finalState = updatedSession?.state || session.state;
       const isCompleted = finalState === "COMPLETED";
+      const pendingAction = updatedSession?.pending_action || null;
+
+      // Clear pending action after reading it
+      if (pendingAction && updatedSession) {
+        updatedSession.pending_action = null;
+        await updatedSession.save();
+      }
+
       // Get AI-generated suggestions or fall back to defaults
       const finalSuggestions =
         updatedSession?.suggestions && updatedSession.suggestions.length > 0
@@ -1504,7 +2670,29 @@ export async function POST(request: NextRequest) {
 
       console.log("Response received, text length:", aiText.length);
       console.log("Final state after tools:", finalState);
+      console.log("Pending action:", pendingAction);
       console.log("Suggestions:", finalSuggestions);
+
+      // Generate token for response (refresh if needed)
+      const responseToken = generateResponseToken();
+
+      // Get applicant data for completed users
+      let applicationStatus:
+        | "pending"
+        | "accepted"
+        | "rejected"
+        | "waitlisted" = "pending";
+      let userName: string | undefined;
+
+      if (isCompleted && updatedSession?.applicant_data?.email) {
+        const applicant = await Applicant.findOne({
+          email: updatedSession.applicant_data.email,
+        });
+        if (applicant) {
+          applicationStatus = applicant.application_status || "pending";
+        }
+        userName = updatedSession.applicant_data.name;
+      }
 
       return new Response(
         new ReadableStream({
@@ -1520,10 +2708,16 @@ export async function POST(request: NextRequest) {
                 // Send final event with updated state info from DB
                 const finalData = JSON.stringify({
                   type: "done",
+                  token: responseToken,
                   server_state: {
                     session_id: session.session_id,
                     state: finalState,
                     completed: isCompleted,
+                    action: pendingAction,
+                    application_status: isCompleted
+                      ? applicationStatus
+                      : undefined,
+                    user_name: isCompleted ? userName : undefined,
                   },
                   suggestions: finalSuggestions,
                 });
@@ -1579,6 +2773,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         assistant_message: fallbackMessage,
+        token: generateResponseToken(),
         server_state: {
           session_id: session.session_id,
           state: currentState,
