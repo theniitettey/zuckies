@@ -70,14 +70,18 @@ const DEFAULT_SUGGESTIONS: Record<OnboardingState, string[]> = {
 };
 
 // Fallback messages when AI fails to generate
-function generateStateFallback(state: OnboardingState, name?: string): string {
+function generateStateFallback(
+  state: OnboardingState,
+  name?: string,
+  isReturningUser?: boolean
+): string {
   const fallbacks: Record<OnboardingState, string> = {
     AWAITING_EMAIL: "drop your email so we can get started! 📧",
-    AWAITING_SECRET_PHRASE: `nice! now choose a secret phrase - something memorable that only you know. this is like your password to come back later.
-
-![secret](https://media1.giphy.com/media/NdKVEei95yvIY/200.gif?cid=a9317fec21ai64029n9gdu6o1hlxrsqg4hvv6ob9bjomfm59&ep=v1_gifs_search&rid=200.gif&ct=g)
-
-think of something fun like "pizza is life" or "i love coding at 2am" 🤫`,
+    AWAITING_SECRET_PHRASE: isReturningUser
+      ? `welcome back${
+          name ? ` ${name}` : ""
+        }! 👋 enter your secret phrase to verify it's you.`
+      : `nice! now choose a secret phrase - something memorable that only you know. this is like your password to come back later. think of something fun like "pizza is life" 🤫`,
     AWAITING_NAME: "got it! what should i call you?",
     AWAITING_WHATSAPP: `cool${
       name ? ` ${name}` : ""
@@ -3028,168 +3032,52 @@ This helps maintain continuity and shows you remember the user.`,
       const userProfile = session.applicant_data;
       const focus = input.focus?.toLowerCase();
 
-      // Build conversation summary
       const totalMessages = messages.length;
       const userMessages = messages.filter((m) => m.role === "user");
-      const assistantMessages = messages.filter((m) => m.role === "assistant");
 
-      // Extract key topics from conversation
-      const keyTopics: string[] = [];
-      const userQuestions: string[] = [];
-      const mentionedTech: string[] = [];
+      // Quick topic detection
+      const topics: string[] = [];
+      const allText = userMessages
+        .map((m) => m.content.toLowerCase())
+        .join(" ");
+      if (allText.includes("meme") || allText.includes("war"))
+        topics.push("meme wars");
+      if (allText.includes("project")) topics.push("projects");
+      if (allText.includes("career") || allText.includes("job"))
+        topics.push("career");
+      if (allText.includes("help") || allText.includes("stuck"))
+        topics.push("help");
 
-      // Common tech keywords to look for
-      const techKeywords = [
-        "javascript",
-        "typescript",
-        "python",
-        "react",
-        "node",
-        "api",
-        "database",
-        "css",
-        "html",
-        "git",
-        "docker",
-        "aws",
-        "backend",
-        "frontend",
-        "fullstack",
-        "mobile",
-        "flutter",
-        "rust",
-        "go",
-        "java",
-        "c++",
-        "sql",
-        "mongodb",
-        "postgres",
-        "redis",
-        "nextjs",
-        "vue",
-        "angular",
-        "svelte",
-      ];
+      // Build compact summary
+      let summary = `Messages: ${totalMessages} | Topics: ${
+        topics.length > 0 ? topics.join(", ") : "general chat"
+      }`;
 
-      for (const msg of userMessages) {
-        const content = msg.content.toLowerCase();
-
-        // Detect questions
-        if (
-          content.includes("?") ||
-          content.startsWith("how") ||
-          content.startsWith("what") ||
-          content.startsWith("why") ||
-          content.startsWith("can")
-        ) {
-          userQuestions.push(
-            msg.content.slice(0, 100) + (msg.content.length > 100 ? "..." : "")
-          );
-        }
-
-        // Detect tech mentions
-        for (const tech of techKeywords) {
-          if (content.includes(tech) && !mentionedTech.includes(tech)) {
-            mentionedTech.push(tech);
-          }
-        }
-
-        // Detect topic keywords
-        if (
-          content.includes("meme") ||
-          content.includes("war") ||
-          content.includes("battle")
-        ) {
-          if (!keyTopics.includes("meme war")) keyTopics.push("meme war");
-        }
-        if (content.includes("project") || content.includes("building")) {
-          if (!keyTopics.includes("projects")) keyTopics.push("projects");
-        }
-        if (content.includes("career") || content.includes("job")) {
-          if (!keyTopics.includes("career")) keyTopics.push("career");
-        }
-        if (content.includes("learn") || content.includes("study")) {
-          if (!keyTopics.includes("learning")) keyTopics.push("learning");
-        }
-        if (content.includes("help") || content.includes("stuck")) {
-          if (!keyTopics.includes("getting help"))
-            keyTopics.push("getting help");
-        }
-      }
-
-      // Build the summary
-      let summary = `## CONVERSATION SUMMARY\n\n`;
-
-      // User profile section (if requested)
+      // Add user info if requested
       if (input.include_user_details && userProfile?.name) {
-        summary += `**User:** ${userProfile.name}\n`;
-        summary += `**Email:** ${userProfile.email || "not set"}\n`;
-        summary += `**Status:** ${
+        summary += ` | User: ${userProfile.name} (${
           userProfile.application_status || "pending"
-        }\n`;
-        if (userProfile.engineering_area)
-          summary += `**Focus:** ${userProfile.engineering_area}\n`;
-        if (userProfile.skill_level)
-          summary += `**Level:** ${userProfile.skill_level}\n`;
-        if (userProfile.tech_focus)
-          summary += `**Tech:** ${userProfile.tech_focus}\n`;
-        summary += `\n`;
+        })`;
       }
 
-      // Conversation stats
-      summary += `**Conversation Stats:**\n`;
-      summary += `- Total messages: ${totalMessages}\n`;
-      summary += `- User messages: ${userMessages.length}\n`;
-      summary += `- Session state: ${session.state}\n\n`;
-
-      // Topics discussed
-      if (keyTopics.length > 0) {
-        summary += `**Topics Discussed:** ${keyTopics.join(", ")}\n\n`;
+      // Last 2 user messages for context
+      const recentUser = userMessages.slice(-2);
+      if (recentUser.length > 0) {
+        summary += ` | Recent: `;
+        summary += recentUser
+          .map(
+            (m) => m.content.slice(0, 50) + (m.content.length > 50 ? "..." : "")
+          )
+          .join("; ");
       }
 
-      // Tech mentioned
-      if (mentionedTech.length > 0) {
-        summary += `**Tech Mentioned:** ${mentionedTech.join(", ")}\n\n`;
-      }
-
-      // Key questions (last 5)
-      if (userQuestions.length > 0) {
-        summary += `**Recent Questions from User:**\n`;
-        const recentQuestions = userQuestions.slice(-5);
-        for (const q of recentQuestions) {
-          summary += `- ${q}\n`;
-        }
-        summary += `\n`;
-      }
-
-      // Last few exchanges (for context)
-      summary += `**Recent Context (last 3 exchanges):**\n`;
-      const recentMessages = messages.slice(-6);
-      for (const msg of recentMessages) {
-        const role = msg.role === "user" ? "User" : "AI";
-        const preview =
-          msg.content.slice(0, 150) + (msg.content.length > 150 ? "..." : "");
-        summary += `- ${role}: ${preview}\n`;
-      }
-
-      // If focus was provided, add focused analysis
+      // Focused search if requested
       if (focus) {
-        summary += `\n**Focused on "${focus}":**\n`;
-        const relevantMessages = messages.filter((m) =>
+        const matches = messages.filter((m) =>
           m.content.toLowerCase().includes(focus)
         );
-        if (relevantMessages.length > 0) {
-          summary += `Found ${relevantMessages.length} messages mentioning "${focus}".\n`;
-          const lastRelevant = relevantMessages.slice(-2);
-          for (const msg of lastRelevant) {
-            const role = msg.role === "user" ? "User" : "AI";
-            const preview =
-              msg.content.slice(0, 150) +
-              (msg.content.length > 150 ? "..." : "");
-            summary += `- ${role}: ${preview}\n`;
-          }
-        } else {
-          summary += `No specific mentions of "${focus}" found in conversation.\n`;
+        if (matches.length > 0) {
+          summary += ` | Found ${matches.length} about "${focus}"`;
         }
       }
 
@@ -3649,7 +3537,8 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
         console.log("No AI text, generating state-based fallback...");
         aiText = generateStateFallback(
           session.state,
-          session.applicant_data?.name
+          session.applicant_data?.name,
+          !!session.pending_verification
         );
       }
 
@@ -3766,7 +3655,8 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
       // Use state-based fallback instead of generic error
       const fallbackMessage = generateStateFallback(
         session.state,
-        session.applicant_data?.name
+        session.applicant_data?.name,
+        !!session.pending_verification
       );
       session.messages.push({ role: "assistant", content: fallbackMessage });
 
