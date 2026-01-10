@@ -102,6 +102,7 @@ const STATE_ORDER = [
   "AWAITING_TECH_FOCUS",
   "AWAITING_SUCCESS_DEFINITION",
   "COMPLETED",
+  "FREE_CHAT",
 ];
 
 // Cool phase names for each state
@@ -123,6 +124,7 @@ const PHASE_NAMES: Record<string, string> = {
   AWAITING_TECH_FOCUS: "focusing",
   AWAITING_SUCCESS_DEFINITION: "defining",
   COMPLETED: "complete ✨",
+  FREE_CHAT: "free chat 💬",
 };
 
 // Dynamic input config based on state
@@ -162,6 +164,10 @@ const INPUT_CONFIG: Record<
   COMPLETED: {
     type: "text",
     placeholder: "ask me anything about your journey...",
+  },
+  FREE_CHAT: {
+    type: "text",
+    placeholder: "what's on your mind? chat freely...",
   },
   DEFAULT: { type: "text", placeholder: "type here..." },
 };
