@@ -180,8 +180,7 @@ const SessionSchema = new Schema<ISession>(
     },
     applicant_email: {
       type: String,
-      sparse: true,
-      index: true,
+      index: { sparse: true },
     },
     applicant_data: {
       type: ApplicantDataSchema,

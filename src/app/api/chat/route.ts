@@ -454,7 +454,7 @@ Users can update their profile info anytime! If they want to:
 **How to handle:**
 1. When user says "update my github to X" or "i want to change my goals" or similar
 2. Call the \`update_profile\` tool with the field and new value
-3. For GitHub/Portfolio URLs: call \`search_web\` first to check it out, then \`update_profile\`
+3. For GitHub/Portfolio URLs: call \`analyze_url\` first to check it out, then \`update_profile\`
 4. Confirm the update was saved
 
 **Recognizing update requests:**
@@ -533,9 +533,9 @@ When the user provides ANY answer (email, secret phrase, name, goals, etc.):
 2. **THEN**: Respond conversationally
 
 **IF USER PROVIDES A URL (GitHub or Portfolio - NOT LinkedIn):**
-- For GitHub: Call \`search_web\` tool to peek at their profile and give feedback
-- For LinkedIn: DO NOT call search_web (LinkedIn blocks access) - just save it directly
-- For Portfolio: Call \`search_web\` to check it out
+- For GitHub: Call \`analyze_url\` tool to peek at their profile and give feedback
+- For LinkedIn: DO NOT call analyze_url (LinkedIn blocks access) - just save it directly
+- For Portfolio: Call \`analyze_url\` to check it out
 - Then call \`save_and_continue\` to save the URL
 - Comment on what you found in your response (for GitHub/Portfolio only)
 
@@ -591,9 +591,9 @@ NEVER call multiple save_and_continue or data-modifying tools at the same time!
 
 - If state is AWAITING_SECRET_PHRASE AND this is a RETURNING USER → Call verify_secret_phrase with {"secret_phrase": "their_phrase"}
 - If state is AWAITING_SECRET_PHRASE AND this is a NEW USER → Call save_and_continue with {"secret_phrase": "their_phrase"}
-- If user provided GitHub URL → Call search_web first, then save_and_continue
+- If user provided GitHub URL → Call analyze_url first, then save_and_continue
 - If user provided LinkedIn URL → Call save_and_continue directly (LinkedIn blocks scraping)
-- If user provided Portfolio URL → Call search_web first, then save_and_continue
+- If user provided Portfolio URL → Call analyze_url first, then save_and_continue
 - For any other data (name, whatsapp, goals, etc.) → Call save_and_continue with the appropriate field
 
 **HOW TO IDENTIFY RETURNING VS NEW USER:**
@@ -1153,6 +1153,8 @@ function createTools(
           { $set: applicantData },
           { upsert: true, new: true }
         );
+        // Link session to the Applicant record
+        session.applicant_email = session.applicant_data.email;
         console.log(
           "✅ Applicant record created/updated:",
           session.applicant_data.email
@@ -2026,12 +2028,19 @@ This is a brand new user! Proceed with save_and_continue to save their email and
         const lastAttempt = applicant.last_recovery_attempt;
         const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
-        if (
-          applicant.recovery_attempts >= 5 &&
-          lastAttempt &&
-          lastAttempt > hourAgo
-        ) {
-          return `RATE_LIMITED: Too many recovery attempts. The user has tried ${applicant.recovery_attempts} times. Ask them to wait an hour before trying again, or try to remember their secret phrase.`;
+        // Reset attempts if the time window has expired
+        if (lastAttempt && lastAttempt < hourAgo) {
+          applicant.recovery_attempts = 0;
+        }
+
+        // Check if rate limited (5 attempts within the hour)
+        if (applicant.recovery_attempts >= 5) {
+          const timeLeft = lastAttempt
+            ? Math.ceil(
+                (lastAttempt.getTime() + 60 * 60 * 1000 - Date.now()) / 60000
+              )
+            : 0;
+          return `RATE_LIMITED: Too many recovery attempts. The user has tried ${applicant.recovery_attempts} times in the past hour. Ask them to wait ${timeLeft} minutes before trying again, or try to remember their secret phrase.`;
         }
 
         // Update recovery attempt tracking
@@ -2836,9 +2845,9 @@ export async function POST(request: NextRequest) {
       if (sessionEmail) {
         return signToken({ email: sessionEmail, sessionId: session_id });
       }
-      // For sessions without email yet, create a temporary token
+      // For sessions without email yet, create a temporary token with valid email format
       return signToken({
-        email: `pending_${session_id}`,
+        email: `pending+${session_id}@sessions.local`,
         sessionId: session_id,
       });
     };
@@ -3009,7 +3018,9 @@ export async function POST(request: NextRequest) {
       // Generate token for response (refresh if needed)
       const responseToken = generateResponseToken();
 
-      // Get applicant data for completed users
+      // Get applicant data for completed users from cached session data
+      // No need to query Applicant model on every request - check_application_status tool
+      // already syncs the status when user explicitly asks, and status changes are rare
       let applicationStatus:
         | "pending"
         | "accepted"
@@ -3017,13 +3028,9 @@ export async function POST(request: NextRequest) {
         | "waitlisted" = "pending";
       let userName: string | undefined;
 
-      if (isCompleted && updatedSession?.applicant_data?.email) {
-        const applicant = await Applicant.findOne({
-          email: updatedSession.applicant_data.email,
-        });
-        if (applicant) {
-          applicationStatus = applicant.application_status || "pending";
-        }
+      if (isCompleted && updatedSession?.applicant_data) {
+        applicationStatus =
+          updatedSession.applicant_data.application_status || "pending";
         userName = updatedSession.applicant_data.name;
       }
 
