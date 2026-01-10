@@ -53,6 +53,7 @@
     "framer-motion": "12.24.10",
     "genkit": "^1.27.0",
     "input-otp": "1.4.1",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.454.0",
     "mongoose": "^9.1.2",
     "next": "16.0.10",
@@ -74,6 +75,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.9",
     "@types/canvas-confetti": "^1.9.0",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -63,11 +63,23 @@ export interface IApplicantData {
   reviewed_by?: string;
 }
 
+// Recovery state for tracking identity verification during secret phrase recovery
+export interface IRecoveryState {
+  email: string;
+  verified_fields: string[];
+  pending_field?: string;
+  verification_score: number;
+  attempts: number;
+}
+
 // Session document interface
 export interface ISession extends Document {
   session_id: string;
   state: OnboardingState;
   messages: IMessage[];
+  // Link to standalone Applicant model by email
+  applicant_email?: string;
+  // Legacy embedded data - for backward compatibility
   applicant_data: IApplicantData;
   processed_messages: string[];
   suggestions: string[];
@@ -76,6 +88,9 @@ export interface ISession extends Document {
     existing_applicant_data: IApplicantData;
     existing_state: OnboardingState;
   };
+  // Recovery flow state
+  pending_recovery?: IRecoveryState;
+  pending_action?: "logout" | "meme_war" | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -133,6 +148,18 @@ const ApplicantDataSchema = new Schema<IApplicantData>(
   { _id: false }
 );
 
+// Recovery state schema
+const RecoveryStateSchema = new Schema<IRecoveryState>(
+  {
+    email: { type: String, required: true },
+    verified_fields: { type: [String], default: [] },
+    pending_field: String,
+    verification_score: { type: Number, default: 0 },
+    attempts: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
 // Session schema
 const SessionSchema = new Schema<ISession>(
   {
@@ -145,11 +172,15 @@ const SessionSchema = new Schema<ISession>(
     state: {
       type: String,
       enum: ONBOARDING_STATES,
-      default: "AWAITING_NAME",
+      default: "AWAITING_EMAIL",
     },
     messages: {
       type: [MessageSchema],
       default: [],
+    },
+    applicant_email: {
+      type: String,
+      index: { sparse: true },
     },
     applicant_data: {
       type: ApplicantDataSchema,
@@ -170,6 +201,15 @@ const SessionSchema = new Schema<ISession>(
         existing_state: String,
       },
       default: undefined,
+    },
+    pending_recovery: {
+      type: RecoveryStateSchema,
+      default: undefined,
+    },
+    pending_action: {
+      type: String,
+      enum: ["logout", "meme_war", null],
+      default: null,
     },
     created_at: {
       type: Date,

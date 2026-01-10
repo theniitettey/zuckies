@@ -97,6 +97,22 @@ function useNaturalTyping(
         return;
       }
 
+      // Check if we're about to start typing an incomplete image markdown
+      // Look ahead to see if there's a partial image syntax coming
+      const partialImageMatch = remainingText.match(/^!\[/);
+      if (partialImageMatch) {
+        // We're at the start of an image - wait for the full image to be in the stream
+        // Check if there's a complete image in the remaining text
+        const completeImageInRemaining = remainingText.match(
+          /^!\[[^\]]*\]\([^)]+\)/
+        );
+        if (!completeImageInRemaining) {
+          // Image is incomplete - wait for more content
+          timeoutId = setTimeout(typeNext, 50);
+          return;
+        }
+      }
+
       const char = currentFullText[indexRef.current];
 
       indexRef.current += 1;
@@ -161,7 +177,16 @@ export default function ChatMessage({
     onTypingComplete
   );
 
-  const displayContent = isUser ? message.content : typedContent;
+  // Strip any incomplete image markdown from displayed content
+  // This ensures users never see partial ![...](...) syntax
+  const cleanDisplayContent = (text: string): string => {
+    // Remove any trailing incomplete image markdown like "![", "![alt", "![alt]", "![alt](" etc
+    return text.replace(/!\[[^\]]*\]?\(?[^)]*$/, "").trimEnd();
+  };
+
+  const displayContent = isUser
+    ? message.content
+    : cleanDisplayContent(typedContent);
 
   return (
     <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
