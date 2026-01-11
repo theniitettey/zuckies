@@ -16,6 +16,17 @@ import { buildSystemPrompt } from "./ai/prompt";
 import { createTools } from "./ai/tools";
 import ai from "./ai/config";
 
+// Suppress expected Genkit tool re-registration warnings
+const originalError = console.error;
+const toolErrorFilter = (...args: any[]) => {
+  const message = args[0]?.toString?.() || "";
+  if (message.includes("already has an entry in the registry")) {
+    return; // Suppress this expected warning
+  }
+  originalError(...args);
+};
+console.error = toolErrorFilter;
+
 export async function POST(request: NextRequest) {
   try {
     await connectDB();

@@ -200,7 +200,7 @@ export function createEngagementTools(
     {
       name: "analyze_url",
       description:
-        "Fetch and analyze ANY URL - GitHub profiles, portfolios, blogs, documentation, articles, tutorials, or any web page. Use this to review user's work, research topics, or analyze resources they share. LinkedIn will fail due to their restrictions.",
+        "Fetch and analyze ANY URL - GitHub profiles, portfolios, blogs, documentation, articles, tutorials, or any web page. Uses Jina AI Reader for clean content extraction. LinkedIn will fail due to their restrictions.",
       inputSchema: z.object({
         url: z.string().describe("The URL to fetch and analyze"),
         context: z
@@ -251,29 +251,42 @@ export function createEngagementTools(
           return "LinkedIn profiles cannot be fetched (they block automated access). Just save the URL directly and let them know you couldn't preview it.";
         }
 
+        // Fetch using Jina AI Reader API
+        const jinaUrl = `https://r.jina.ai/${url}`;
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-        const response = await fetch(url, {
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            Accept:
-              "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.9",
-          },
-          signal: controller.signal,
-          redirect: "follow",
-        });
+        let response: Response;
+        try {
+          response = await fetch(jinaUrl, {
+            headers: {
+              Accept: "application/json",
+            },
+            signal: controller.signal,
+          });
+        } catch (fetchError) {
+          clearTimeout(timeoutId);
+          throw fetchError;
+        }
 
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-          return `Could not fetch the page (HTTP ${response.status}). The URL might be private, require login, or not exist. Just save it and mention you couldn't preview it.`;
+          return `Could not fetch the page via Jina (HTTP ${response.status}). The URL might be private, require login, or not exist. Just save it and mention you couldn't preview it.`;
         }
 
-        const contentType = response.headers.get("content-type") || "";
-        const html = await response.text();
+        let markdown: string;
+        try {
+          const data = (await response.json()) as { content?: string };
+          markdown = data.content || "";
+
+          if (!markdown) {
+            return `Could not extract content from the page. It might be private or blocked. You can still save the URL and let the user know.`;
+          }
+        } catch (parseError) {
+          console.error("Error parsing Jina response:", parseError);
+          return `Could not read the page content. The page might be in an unsupported format. You can still save the URL and let the user know.`;
+        }
 
         // Detect page type
         const isGitHub = url.includes("github.com");
@@ -298,43 +311,23 @@ export function createEngagementTools(
         const isVercel = url.includes("vercel.app");
         const isNetlify = url.includes("netlify.app");
 
-        // Clean up HTML - remove scripts, styles, and extract meaningful text
-        const cleanHtml = html
-          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-          .replace(/<svg[^>]*>[\s\S]*?<\/svg>/gi, "")
-          .replace(/<!--[\s\S]*?-->/g, "")
-          .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "")
-          .replace(/<template[^>]*>[\s\S]*?<\/template>/gi, "")
-          .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, "")
-          .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "")
-          .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "")
-          .replace(/<[^>]+>/g, " ") // Remove all HTML tags
-          .replace(/&nbsp;/g, " ")
-          .replace(/&amp;/g, "&")
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&quot;/g, '"')
-          .replace(/\s{2,}/g, " ")
-          .replace(/\n\s*\n/g, "\n")
-          .trim();
-
-        // Extract key metadata
-        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        // Extract title from markdown (usually first heading)
+        const titleMatch =
+          markdown.match(/^#\s+(.+)$/m) || markdown.match(/title:\s*(.+)/i);
         const title = titleMatch ? titleMatch[1].trim() : "Unknown";
 
+        // Extract description if available
         const descMatch =
-          html.match(/<meta\s+name="description"\s+content="([^"]*)"/i) ||
-          html.match(/<meta\s+content="([^"]*)"[^>]*name="description"/i) ||
-          html.match(/<meta\s+property="og:description"\s+content="([^"]*)"/i);
-        const description = descMatch ? descMatch[1] : "";
+          markdown.match(/description:\s*(.+)/i) ||
+          markdown.match(/summary:\s*(.+)/i);
+        const description = descMatch ? descMatch[1].trim() : "";
 
         // Truncate content AGGRESSIVELY - max 3000 chars to avoid AI timeout
         const maxLength = 3000;
         const truncatedContent =
-          cleanHtml.length > maxLength
-            ? cleanHtml.slice(0, maxLength) + "..."
-            : cleanHtml;
+          markdown.length > maxLength
+            ? markdown.slice(0, maxLength) + "..."
+            : markdown;
 
         // Determine page type and generate focused summary
         let pageType = "Web Page";
@@ -346,17 +339,18 @@ export function createEngagementTools(
               ? "GitHub Repository"
               : "GitHub Profile";
 
-          // Extract GitHub-specific info
-          const repoCount = html.match(/(\d+)\s*repositories/i)?.[1] || "";
-          const followers = html.match(/(\d+)\s*followers/i)?.[1] || "";
-          const following = html.match(/(\d+)\s*following/i)?.[1] || "";
-          const stars = html.match(/(\d+)\s*stars/i)?.[1] || "";
-          const bio =
-            html
-              .match(
-                /<div[^>]*class="[^"]*user-profile-bio[^"]*"[^>]*>([^<]+)/i
-              )?.[1]
-              ?.trim() || "";
+          // Extract GitHub-specific info from markdown
+          const repoMatch = markdown.match(/(\d+)\s*repositories?/i);
+          const followerMatch = markdown.match(/(\d+)\s*followers?/i);
+          const followingMatch = markdown.match(/(\d+)\s*following/i);
+          const starMatch = markdown.match(/(\d+)\s*stars?/i);
+          const bioMatch = markdown.match(/bio[:\s]+([^\n]+)/i);
+
+          const repoCount = repoMatch ? repoMatch[1] : "";
+          const followers = followerMatch ? followerMatch[1] : "";
+          const following = followingMatch ? followingMatch[1] : "";
+          const stars = starMatch ? starMatch[1] : "";
+          const bio = bioMatch ? bioMatch[1].trim() : "";
 
           summary = `GitHub Stats: ${repoCount ? `${repoCount} repos` : ""}${
             followers ? `, ${followers} followers` : ""

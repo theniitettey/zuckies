@@ -8,10 +8,11 @@ import { z } from "genkit";
  * Playful, constructive roasts for GitHub profiles and general URLs.
  * Safe by design: light sarcasm + quick tips; never mean-spirited.
  *
+ * Uses Jina AI Reader API for clean HTML-to-Markdown conversion.
+ *
  * Tools:
- * - roast_github: Normalize handle/URL, fetch page, derive stats, craft roast + tips
- * - roast_url: Fetch any URL (except LinkedIn), detect type, craft roast + tips
- * - generate_roast_instructions: Return style guide for performing roasts inline
+ * - roast_github: Normalize handle/URL, fetch via Jina, extract key stats, craft roast + tips
+ * - roast_url: Fetch any URL via Jina (except LinkedIn), craft roast + tips
  */
 export function createRoastTools(session: ISession) {
   const normalizeToGitHubUrl = (input: string) => {
@@ -30,35 +31,53 @@ export function createRoastTools(session: ISession) {
     return url;
   };
 
-  const safeFetch = async (
+  /**
+   * Fetch URL content via Jina AI Reader API
+   * Returns clean Markdown content extracted from the page
+   */
+  const fetchWithJina = async (
     url: string,
-    timeoutMs = 15000
+    timeoutMs = 30000
   ): Promise<{
     ok: boolean;
-    status: number;
-    text?: string;
-    headers?: Headers;
+    markdown?: string;
+    error?: string;
   }> => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, {
+      const jinaUrl = `https://r.jina.ai/${url}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      const response = await fetch(jinaUrl, {
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-          Accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
+          Accept: "application/json",
         },
         signal: controller.signal,
-        redirect: "follow",
       });
+
       clearTimeout(timeoutId);
-      const text = await res.text();
-      return { ok: res.ok, status: res.status, text, headers: res.headers };
+
+      if (!response.ok) {
+        return {
+          ok: false,
+          error: `Jina API returned status ${response.status}`,
+        };
+      }
+
+      const data = (await response.json()) as { content?: string };
+      const markdown = data.content || "";
+
+      if (!markdown) {
+        return { ok: false, error: "No content returned from Jina" };
+      }
+
+      return { ok: true, markdown };
     } catch (err) {
-      clearTimeout(timeoutId);
-      return { ok: false, status: 0 };
+      const errorMsg = err instanceof Error ? err.message : "Unknown error";
+      return {
+        ok: false,
+        error: `Failed to fetch: ${errorMsg}`,
+      };
     }
   };
 
@@ -86,28 +105,27 @@ export function createRoastTools(session: ISession) {
     },
     async (input) => {
       const url = normalizeToGitHubUrl(input.handle);
-      const res = await safeFetch(url);
+      const result = await fetchWithJina(url);
       const username = url.split("github.com/")[1]?.split("/")[0] || "unknown";
 
-      if (!res.ok || !res.text) {
-        return `couldn't peek your github (${url})—either private or blocking bots. i'll keep it light:\nkaishhh!!! your repo game is giving mysterious energy. quick tips:\n- add a clean README to your top projects\n- pin your best 2-3 repos\n- a short bio helps people vibe with your work`;
+      if (!result.ok || !result.markdown) {
+        return `couldn't peek your github (${url})—either private or unreachable. i'll keep it light:\nkaishhh!!! your repo game is giving mysterious energy. quick tips:\n- add a clean README to your top projects\n- pin your best 2-3 repos\n- a short bio helps people vibe with your work`;
       }
 
-      const html = res.text;
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      const title = titleMatch ? titleMatch[1].trim() : username;
-      const repoCount = html.match(/(\d+)\s*repositories/i)?.[1];
-      const followers = html.match(/(\d+)\s*followers/i)?.[1];
-      const following = html.match(/(\d+)\s*following/i)?.[1];
-      const stars = html.match(/(\d+)\s*stars/i)?.[1];
-      const bio = html
-        .match(/<div[^>]*class="[^"]*user-profile-bio[^"]*"[^>]*>([^<]+)/i)?.[1]
-        ?.trim();
+      const markdown = result.markdown;
 
-      // heuristics
-      const repoN = repoCount ? parseInt(repoCount, 10) : NaN;
-      const followersN = followers ? parseInt(followers, 10) : NaN;
-      const starsN = stars ? parseInt(stars, 10) : NaN;
+      // Extract stats from markdown content
+      const repoMatch = markdown.match(/(\d+)\s*repositories?/i);
+      const followerMatch = markdown.match(/(\d+)\s*followers?/i);
+      const followingMatch = markdown.match(/(\d+)\s*following/i);
+      const starMatch = markdown.match(/(\d+)\s*stars?/i);
+      const bioMatch = markdown.match(/bio[:\s]+([^\n]+)/i);
+
+      const repoN = repoMatch ? parseInt(repoMatch[1], 10) : NaN;
+      const followersN = followerMatch ? parseInt(followerMatch[1], 10) : NaN;
+      const followingN = followingMatch ? parseInt(followingMatch[1], 10) : NaN;
+      const starsN = starMatch ? parseInt(starMatch[1], 10) : NaN;
+      const bio = bioMatch ? bioMatch[1].trim() : "";
 
       const lines: string[] = [];
       const intensity = input.intensity || "light";
@@ -206,41 +224,44 @@ export function createRoastTools(session: ISession) {
           : `https://github.com/${url}`;
       }
 
-      const res = await safeFetch(url);
-      if (!res.ok || !res.text) {
+      const result = await fetchWithJina(url);
+      if (!result.ok || !result.markdown) {
         return `couldn't fetch ${url}. still, small roast: title your page well, add meta description, and keep loading fast. we move.`;
       }
 
-      const html = res.text;
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      const title = titleMatch ? titleMatch[1].trim() : "unknown";
-      const descMatch =
-        html.match(/<meta\s+name="description"\s+content="([^"]*)"/i) ||
-        html.match(/<meta\s+content="([^"]*)"[^>]*name="description"/i) ||
-        html.match(/<meta\s+property="og:description"\s+content="([^"]*)"/i);
-      const description = descMatch ? descMatch[1].trim() : "";
-
-      // simple content signal
-      const textLen = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").length;
-      const hasImages = /<img\b/i.test(html);
-      const hasVideo = /<video\b|youtube\.com|youtu\.be/i.test(html);
-
+      const markdown = result.markdown;
       const lines: string[] = [];
       lines.push(`url: ${url}`);
+
+      // Extract title from markdown (usually first heading or metadata)
+      const titleMatch =
+        markdown.match(/^#\s+(.+)$/m) || markdown.match(/title:\s*(.+)/i);
+      const title = titleMatch ? titleMatch[1].trim() : "unknown";
       lines.push(`title: ${title.toLowerCase()}`);
 
-      if (!description)
+      // Check for description in markdown
+      const hasDescription = markdown.match(/description:|summary:|overview:/i);
+      if (!hasDescription) {
         lines.push(
           "meta description dey ghost. add one so google no go confuse."
         );
-      if (textLen < 800)
+      }
+
+      // Simple heuristic: check content length and media presence
+      const contentLen = markdown.length;
+      const hasImages = /!\[.*\]\(.*\)/i.test(markdown); // markdown image syntax
+      const hasVideo = /youtube|youtu\.be|video/i.test(markdown);
+
+      if (contentLen < 800) {
         lines.push(
           "content slim fit. give me small story or screenshots—no be only vibes."
         );
-      if (!hasImages && !hasVideo)
+      }
+      if (!hasImages && !hasVideo) {
         lines.push(
           "visuals on strike. one hero image go change the whole mood."
         );
+      }
 
       const ctx = (input.context || "").toLowerCase();
       if (ctx.includes("portfolio")) {
