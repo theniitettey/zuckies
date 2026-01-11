@@ -198,6 +198,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const isInitializedRef = useRef(false); // Prevent double initialization in React Strict Mode
   const giphySearchRef = useRef<HTMLInputElement>(null);
   const { theme, setTheme } = useTheme();
 
@@ -276,13 +277,22 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
     }, 500);
   }, []);
 
-  // Trigger celebration when completed
+  // Trigger celebration when completed with actual application status (not just free chat mode)
   useEffect(() => {
-    if (sessionState?.completed && !hasShownCelebration) {
+    if (
+      sessionState?.completed &&
+      sessionState?.application_status &&
+      !hasShownCelebration
+    ) {
       setHasShownCelebration(true);
       triggerCelebration();
     }
-  }, [sessionState?.completed, hasShownCelebration, triggerCelebration]);
+  }, [
+    sessionState?.completed,
+    sessionState?.application_status,
+    hasShownCelebration,
+    triggerCelebration,
+  ]);
 
   const getProgress = () => {
     if (!sessionState) return { current: 0, total: STATE_ORDER.length };
@@ -426,6 +436,10 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
   const hasMemeInInput = input.includes("![") && input.includes("](");
 
   useEffect(() => {
+    // Prevent double initialization in React Strict Mode
+    if (isInitializedRef.current) return;
+    isInitializedRef.current = true;
+
     // Check for saved session
     const saved = localStorage.getItem("onboarding_session");
     if (saved) {
@@ -477,16 +491,22 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
 
       setSessionState(data.server_state);
       setSuggestions(data.suggestions || []);
-      setMessages([
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: data.assistant_message,
-          timestamp: Date.now(),
-          status: "sent",
-          shouldAnimate: true, // Animate the welcome message
-        },
-      ]);
+
+      // Only add message if there's content (skip empty init messages)
+      if (data.assistant_message && data.assistant_message.trim()) {
+        setMessages([
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: data.assistant_message,
+            timestamp: Date.now(),
+            status: "sent",
+            shouldAnimate: true, // Animate the welcome message
+          },
+        ]);
+      } else {
+        setMessages([]); // Start with no messages - user initiates
+      }
     } catch {
       // Show error state and allow retry
       setSessionState({
@@ -723,16 +743,11 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
         )
       );
 
-      // Add empty assistant message for streaming with isStreaming flag
-      setMessages((prev) => [
-        ...prev,
-        { ...assistantMessage, isStreaming: true },
-      ]);
-
       // Handle streaming response
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let streamedContent = "";
+      let hasReceivedContent = false;
 
       if (reader) {
         while (true) {
@@ -749,16 +764,37 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
 
                 if (data.type === "chunk") {
                   streamedContent += data.text;
-                  // Update assistant message with streamed content
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMessageId
-                        ? { ...m, content: streamedContent, isStreaming: true }
-                        : m
-                    )
-                  );
+
+                  // Only add assistant message when we have actual content
+                  if (!hasReceivedContent && streamedContent.trim()) {
+                    hasReceivedContent = true;
+                    // Add assistant message for streaming with isStreaming flag
+                    setMessages((prev) => [
+                      ...prev,
+                      {
+                        ...assistantMessage,
+                        content: streamedContent,
+                        isStreaming: true,
+                      },
+                    ]);
+                  } else if (hasReceivedContent) {
+                    // Update assistant message with streamed content
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === assistantMessageId
+                          ? {
+                              ...m,
+                              content: streamedContent,
+                              isStreaming: true,
+                            }
+                          : m
+                      )
+                    );
+                  }
                   // Scroll on each chunk to keep up with streaming (instant)
-                  scrollToBottom(true);
+                  if (hasReceivedContent) {
+                    scrollToBottom(true);
+                  }
                 } else if (data.type === "done") {
                   // Update token if provided
                   if (data.token) {
@@ -769,14 +805,27 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                   setSessionState(data.server_state);
                   setSuggestions(data.suggestions || []);
 
-                  // Mark assistant message as complete and stop streaming
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMessageId
-                        ? { ...m, status: "sent", isStreaming: false }
-                        : m
-                    )
-                  );
+                  // Mark assistant message as complete and stop streaming (only if we added it)
+                  if (hasReceivedContent) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === assistantMessageId
+                          ? { ...m, status: "sent", isStreaming: false }
+                          : m
+                      )
+                    );
+                  } else if (streamedContent.trim()) {
+                    // If we have content but haven't added the message yet (edge case), add it now
+                    setMessages((prev) => [
+                      ...prev,
+                      {
+                        ...assistantMessage,
+                        content: streamedContent,
+                        status: "sent",
+                        isStreaming: false,
+                      },
+                    ]);
+                  }
 
                   // Handle actions from server
                   if (data.server_state?.action === "logout") {
@@ -1015,7 +1064,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                 transition={{ duration: 0.2 }}
                 className="text-xs sm:text-sm text-foreground/80 font-medium flex items-center gap-1.5"
               >
-                {sessionState?.completed ? (
+                {sessionState?.completed && sessionState?.application_status ? (
                   <>
                     <span
                       className={`w-2 h-2 rounded-full ${
