@@ -457,15 +457,22 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
           "- Response object keys:",
           response ? Object.keys(response) : "null"
         );
-        
+
         // Log the full response object for debugging
-        console.log("Full AI response object:", JSON.stringify({
-          text: response?.text,
-          finishReason: response?.finishReason,
-          finishMessage: response?.finishMessage,
-          usage: response?.usage,
-          message: response?.message,
-        }, null, 2));
+        console.log(
+          "Full AI response object:",
+          JSON.stringify(
+            {
+              text: response?.text,
+              finishReason: response?.finishReason,
+              finishMessage: response?.finishMessage,
+              usage: response?.usage,
+              message: response?.message,
+            },
+            null,
+            2
+          )
+        );
       } catch (genError) {
         console.error("AI generate error:", genError);
         // Don't retry - just use fallback
@@ -476,11 +483,24 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
       let aiText = response?.text?.trim();
       if (!aiText) {
         console.log("No AI text, generating state-based fallback...");
-        aiText = generateStateFallback(
-          session.state,
-          session.applicant_data?.name,
-          !!session.pending_verification
-        );
+
+        // Check if meme war was just started (pending_action = meme_war)
+        if (session.pending_action === "meme_war") {
+          console.log(
+            "Meme war detected but no AI text - using meme war fallback"
+          );
+          aiText = `oya now! ⚔️ meme war started!
+
+let the battle begin! drop your best meme and let's see what you got 😤
+
+(the AI tried to send a meme but something went wrong - but the war is still on! 🔥)`;
+        } else {
+          aiText = generateStateFallback(
+            session.state,
+            session.applicant_data?.name,
+            !!session.pending_verification
+          );
+        }
       }
 
       // Save final message and any pending tool changes
