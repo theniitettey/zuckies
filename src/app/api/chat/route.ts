@@ -459,20 +459,7 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
         );
 
         // Log the full response object for debugging
-        console.log(
-          "Full AI response object:",
-          JSON.stringify(
-            {
-              text: response?.text,
-              finishReason: response?.finishReason,
-              finishMessage: response?.finishMessage,
-              usage: response?.usage,
-              message: response?.message,
-            },
-            null,
-            2
-          )
-        );
+        console.log("-🤖AI Response: ", response.text);
       } catch (genError) {
         console.error("AI generate error:", genError);
         // Don't retry - just use fallback
