@@ -140,7 +140,7 @@ const ApplicantDataSchema = new Schema<IApplicantData>(
     application_status: {
       type: String,
       enum: ["pending", "accepted", "rejected", "waitlisted"],
-      default: "pending",
+      // No default - only set when user actually completes onboarding
     },
     review_notes: String,
     reviewed_at: String,
