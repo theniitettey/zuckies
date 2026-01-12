@@ -446,6 +446,10 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
         "Pending verification:",
         session.pending_verification ? "YES - returning user" : "NO - new user"
       );
+      console.log(
+        "Available tools:",
+        tools.map((t) => t.name || "unknown")
+      );
 
       // Single AI generate call - NO RETRY (retrying re-runs tools which breaks state)
       let response;
@@ -468,6 +472,8 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
           "- Response object keys:",
           response ? Object.keys(response) : "null"
         );
+        console.log("- Tool calls made:", response?.toolCalls?.length || 0);
+        console.log("- Finish reason:", response?.finishReason);
 
         // Log the full response object for debugging
         console.log("-🤖AI Response: ", response.text);
