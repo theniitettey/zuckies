@@ -3,306 +3,225 @@ import ai from "../config";
 import { z } from "genkit";
 import { logToolExecution } from "./logger";
 
-/**
- * Roast Tools
- *
- * Playful, constructive roasts for GitHub profiles and general URLs.
- * Safe by design: light sarcasm + quick tips; never mean-spirited.
- *
- * Uses Jina AI Reader API for clean HTML-to-Markdown conversion.
- *
- * Tools:
- * - roast_github: Normalize handle/URL, fetch via Jina, extract key stats, craft roast + tips
- * - roast_url: Fetch any URL via Jina (except LinkedIn), craft roast + tips
- */
+/* =====================================================
+   SHARED HELPERS
+===================================================== */
+
+const GITHUB_HEADERS = {
+  Accept: "application/vnd.github+json",
+  ...(process.env.GITHUB_TOKEN
+    ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
+    : {}),
+};
+
+const normalizeGithub = (input: string) => {
+  let v = input.trim().replace(/^@/, "");
+  if (!v.startsWith("http")) v = `https://github.com/${v}`;
+  return v.replace(/\/$/, "");
+};
+
+const fetchGitHub = async (url: string) => {
+  const res = await fetch(url, { headers: GITHUB_HEADERS });
+  if (!res.ok) throw new Error(`GitHub API failed: ${res.status}`);
+  return res.json();
+};
+
+const fetchWithJina = async (url: string): Promise<string> => {
+  const res = await fetch(`https://r.jina.ai/${url}`);
+  if (!res.ok) throw new Error("Jina fetch failed");
+  const raw = await res.text();
+
+  try {
+    const json = JSON.parse(raw);
+    return [json.title, json.description, json.content]
+      .filter(Boolean)
+      .join("\n\n");
+  } catch {
+    return raw;
+  }
+};
+
+const safeAll = async <T extends any[]>(promises: {
+  [K in keyof T]: Promise<T[K]>;
+}): Promise<Partial<T>> => {
+  const results = await Promise.allSettled(promises);
+  return results.map((r) =>
+    r.status === "fulfilled" ? r.value : undefined
+  ) as Partial<T>;
+};
+
+const finalize = (lines: string[], intensity: string, content: string) => {
+  const base = lines.join("\n");
+  if (intensity === "spicy") return base + "\n🌶️ small pepper, earned.";
+  if (intensity === "medium") return base + "\nlight slap, heavy love.";
+  return base;
+};
+
+/* =====================================================
+   TOOL FACTORY
+===================================================== */
+
 export function createRoastTools(session: ISession) {
-  const normalizeToGitHubUrl = (input: string) => {
-    let url = input.trim();
-    url = url.replace(/^@/, "");
-    const isLikelyUsername =
-      /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(url) &&
-      !url.includes(".");
-    if (isLikelyUsername) return `https://github.com/${url}`;
-    if (url.includes("github.com") && !url.startsWith("http"))
-      return `https://${url}`;
-    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      if (url.includes(".")) return `https://${url}`;
-      return `https://github.com/${url}`;
-    }
-    return url;
-  };
+  /* =====================================================
+     1️⃣ GITHUB PROFILE ROAST
+  ===================================================== */
 
-  /**
-   * Fetch URL content via Jina AI Reader API
-   * Returns clean Markdown content extracted from the page
-   */
-  const fetchWithJina = async (
-    url: string,
-    timeoutMs = 30000
-  ): Promise<{
-    ok: boolean;
-    markdown?: string;
-    error?: string;
-  }> => {
-    try {
-      const jinaUrl = `https://r.jina.ai/${url}`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      const response = await fetch(jinaUrl, {
-        headers: {
-          Accept: "application/json",
-        },
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        return {
-          ok: false,
-          error: `Jina API returned status ${response.status}`,
-        };
-      }
-
-      const data = (await response.json()) as { content?: string };
-      const markdown = data.content || "";
-
-      if (!markdown) {
-        return { ok: false, error: "No content returned from Jina" };
-      }
-
-      return { ok: true, markdown };
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Unknown error";
-      return {
-        ok: false,
-        error: `Failed to fetch: ${errorMsg}`,
-      };
-    }
-  };
-
-  const roastGithubTool = ai.defineTool(
+  const roastGithubProfileTool = ai.defineTool(
     {
-      name: "roast_github",
+      name: "roast_github_profile",
       description:
-        "Playfully roast a GitHub profile or repo URL/username. Light sarcasm + constructive tips; never mean.",
+        "Roast a GitHub profile using real stats (GitHub API) + page context (Jina).",
       inputSchema: z.object({
-        handle: z
-          .string()
-          .describe(
-            "GitHub username or URL (can be bare username, @handle, or full URL)"
-          ),
-        intensity: z
-          .enum(["light", "medium", "spicy"]) // 'spicy' is still safe
-          .optional()
-          .describe("Roast intensity; default 'light'. Always remain kind."),
-        include_tips: z
-          .boolean()
-          .optional()
-          .describe("Append 2-3 constructive tips after roast. Default true."),
+        handle: z.string(),
+        intensity: z.enum(["light", "medium", "spicy"]).optional(),
       }),
       outputSchema: z.string(),
     },
-    async (input) => {
-      logToolExecution("roast_github", input);
-      const url = normalizeToGitHubUrl(input.handle);
-      const result = await fetchWithJina(url);
-      const username = url.split("github.com/")[1]?.split("/")[0] || "unknown";
+    async ({ handle, intensity = "light" }) => {
+      logToolExecution("roast_github_profile", { handle });
 
-      if (!result.ok || !result.markdown) {
-        return `couldn't peek your github (${url})—either private or unreachable. i'll keep it light:\nkaishhh!!! your repo game is giving mysterious energy. quick tips:\n- add a clean README to your top projects\n- pin your best 2-3 repos\n- a short bio helps people vibe with your work`;
+      const url = normalizeGithub(handle);
+      const username = url.split("github.com/")[1];
+
+      const [profile, pageText] = await safeAll([
+        fetchGitHub(`https://api.github.com/users/${username}`),
+        fetchWithJina(url),
+      ]);
+
+      if (!profile) {
+        return "github profile dodged me. either private or hiding.";
       }
-
-      const markdown = result.markdown;
-
-      // Extract stats from markdown content
-      const repoMatch = markdown.match(/(\d+)\s*repositories?/i);
-      const followerMatch = markdown.match(/(\d+)\s*followers?/i);
-      const followingMatch = markdown.match(/(\d+)\s*following/i);
-      const starMatch = markdown.match(/(\d+)\s*stars?/i);
-      const bioMatch = markdown.match(/bio[:\s]+([^\n]+)/i);
-
-      const repoN = repoMatch ? parseInt(repoMatch[1], 10) : NaN;
-      const followersN = followerMatch ? parseInt(followerMatch[1], 10) : NaN;
-      const followingN = followingMatch ? parseInt(followingMatch[1], 10) : NaN;
-      const starsN = starMatch ? parseInt(starMatch[1], 10) : NaN;
-      const bio = bioMatch ? bioMatch[1].trim() : "";
 
       const lines: string[] = [];
-      const intensity = input.intensity || "light";
 
-      // opener
-      lines.push(`okay ${username}, let's peep the vibes 👀`);
+      lines.push(`okay **${username}**, I actually checked 👀`);
+      lines.push(
+        `- repos: ${profile.public_repos}\n- followers: ${profile.followers}\n- following: ${profile.following}`
+      );
+      lines.push("");
 
-      if (!bio) {
-        lines.push(
-          "bio be like silent mode. give us one line so recruiters no go fear."
-        );
-      }
-      if (!isNaN(repoN)) {
-        if (repoN === 0) lines.push("repos: empty fridge. we go chop when? 🍽️");
-        else if (repoN < 4)
-          lines.push(
-            "repos looking like starter pack. we love the minimalism, but ship small things weekly."
-          );
-        else
-          lines.push(
-            "nice spread of repos. keep shipping—consistency > perfection."
-          );
+      if (profile.bio) {
+        lines.push(`bio: "${profile.bio}"`);
       } else {
         lines.push(
-          "couldn't read repo count. if it's plenty, kaishhh!!! keep the heat on."
+          "bio empty. mysterious dev arc. recruiters no like riddles."
         );
       }
 
-      if (!isNaN(followersN)) {
-        if (followersN < 5)
-          lines.push(
-            "followers lowkey—underground legend. drop READMEs and pin projects to help folks find you."
-          );
-        else if (followersN < 50)
-          lines.push(
-            "decent followers. a clean portfolio link could level it up."
-          );
-        else lines.push("crowd dey. keep quality high and docs crisp.");
+      if (!profile.blog && pageText && !pageText.match(/https?:\/\//)) {
+        lines.push("no portfolio link spotted. code dey, story missing.");
       }
 
-      if (!isNaN(starsN)) {
-        if (starsN === 0)
-          lines.push("stars = zero? we move. good docs + demos attract stars.");
-        else lines.push("stars on deck. keep showcasing results, not vibes.");
-      }
+      lines.push("profile foundation dey. now make am loud.");
 
-      // friendly close
-      lines.push("no be shade—just love. keep building. we move. 🚀");
-
-      const tipsEnabled = input.include_tips !== false;
-      if (tipsEnabled) {
-        const tips = [
-          "add short READMEs with setup + screenshot",
-          "pin 2-3 repos that represent you",
-          "write 1-2 line bio + stack",
-        ];
-        lines.push("\nquick tips:");
-        tips.forEach((t) => lines.push(`- ${t}`));
-      }
-
-      const base = lines.join("\n");
-      if (intensity === "spicy")
-        return base + "\nsmall ginger only—never disrespect. correct!";
-      if (intensity === "medium")
-        return base + "\nlight slap, heavy love. e go be.";
-      return base;
+      return finalize(lines, intensity, pageText ?? "");
     }
   );
+
+  /* =====================================================
+     2️⃣ GITHUB REPO ROAST
+  ===================================================== */
+
+  const roastGithubRepoTool = ai.defineTool(
+    {
+      name: "roast_github_repo",
+      description:
+        "Roast a specific GitHub repository using API stats + README context.",
+      inputSchema: z.object({
+        repo_url: z.string().describe("Full GitHub repository URL"),
+        intensity: z.enum(["light", "medium", "spicy"]).optional(),
+      }),
+      outputSchema: z.string(),
+    },
+    async ({ repo_url, intensity = "light" }) => {
+      logToolExecution("roast_github_repo", { repo_url });
+
+      const cleanUrl = normalizeGithub(repo_url);
+      const [, owner, repo] = cleanUrl.split("/").slice(-3);
+
+      const [repoData, readmeData] = await safeAll([
+        fetchGitHub(`https://api.github.com/repos/${owner}/${repo}`),
+        fetchGitHub(`https://api.github.com/repos/${owner}/${repo}/readme`)
+          .then((r) => Buffer.from(r.content, "base64").toString("utf-8"))
+          .catch(() => ""),
+      ]);
+
+      if (!repoData) {
+        return "repo dodged me. either deleted or undercover.";
+      }
+
+      const readme = readmeData || "";
+      const hasImages = /!\[.*\]\(.*\)/.test(readme);
+      const hasSetup = /install|setup|usage/i.test(readme);
+
+      const lines: string[] = [];
+
+      lines.push(`repo autopsy: **${repo}** 🧪`);
+      lines.push(
+        `- ⭐ ${repoData.stargazers_count} | 🍴 ${repoData.forks_count}`
+      );
+      lines.push(`- last update: ${repoData.updated_at}`);
+      lines.push("");
+
+      if (!readme) {
+        lines.push("README missing. raw repo energy. explain yourself.");
+      } else {
+        lines.push(`README length: ${readme.length} chars`);
+
+        if (readme.length < 400)
+          lines.push("README thin. vibes without context.");
+        if (!hasImages)
+          lines.push("no screenshots. trust-me-bro architecture detected.");
+        if (!hasSetup) lines.push("no setup steps. mind-reading required.");
+      }
+
+      lines.push("effort dey. presentation still lagging.");
+
+      return finalize(lines, intensity, readme ?? "");
+    }
+  );
+
+  /* =====================================================
+     3️⃣ GENERIC URL ROAST (JINA ONLY)
+  ===================================================== */
 
   const roastUrlTool = ai.defineTool(
     {
       name: "roast_url",
       description:
-        "Playfully roast a general URL (portfolio, docs, blog, project link). Safe, constructive, and helpful.",
+        "Roast any public URL using visible content only (no SEO/meta assumptions).",
       inputSchema: z.object({
-        url: z
-          .string()
-          .describe("Any non-LinkedIn URL to review and roast kindly"),
-        context: z
-          .string()
-          .optional()
-          .describe("Optional context: 'portfolio', 'docs', 'project', etc."),
+        url: z.string(),
+        context: z.string().optional(),
         intensity: z.enum(["light", "medium", "spicy"]).optional(),
-        include_tips: z.boolean().optional(),
       }),
       outputSchema: z.string(),
     },
-    async (input) => {
-      logToolExecution("roast_url", input);
-      let url = input.url.trim();
-      if (url.includes("linkedin.com")) {
-        return "linkedin no dey allow me peek. share another link and i go roast gently.";
-      }
-      if (!url.startsWith("http://") && !url.startsWith("https://")) {
-        url = url.includes(".")
-          ? `https://${url}`
-          : `https://github.com/${url}`;
-      }
+    async ({ url, context = "", intensity = "light" }) => {
+      logToolExecution("roast_url", { url });
 
-      const result = await fetchWithJina(url);
-      if (!result.ok || !result.markdown) {
-        return `couldn't fetch ${url}. still, small roast: title your page well, add meta description, and keep loading fast. we move.`;
-      }
+      const content = await fetchWithJina(url);
 
-      const markdown = result.markdown;
       const lines: string[] = [];
-      lines.push(`url: ${url}`);
+      lines.push(`url roast: ${url}`);
 
-      // Extract title from markdown (usually first heading or metadata)
-      const titleMatch =
-        markdown.match(/^#\s+(.+)$/m) || markdown.match(/title:\s*(.+)/i);
-      const title = titleMatch ? titleMatch[1].trim() : "unknown";
-      lines.push(`title: ${title.toLowerCase()}`);
+      if (content.length < 800)
+        lines.push("content short. page feels unfinished.");
 
-      // Check for description in markdown
-      const hasDescription = markdown.match(/description:|summary:|overview:/i);
-      if (!hasDescription) {
+      if (!/!\[.*\]\(.*\)/.test(content))
+        lines.push("no visuals detected. text-only grind.");
+
+      if (context.toLowerCase().includes("portfolio")) {
         lines.push(
-          "meta description dey ghost. add one so google no go confuse."
+          "portfolio check: add 2–3 case studies. problem → approach → result."
         );
       }
 
-      // Simple heuristic: check content length and media presence
-      const contentLen = markdown.length;
-      const hasImages = /!\[.*\]\(.*\)/i.test(markdown); // markdown image syntax
-      const hasVideo = /youtube|youtu\.be|video/i.test(markdown);
+      lines.push("no bad vibes. just polish.");
 
-      if (contentLen < 800) {
-        lines.push(
-          "content slim fit. give me small story or screenshots—no be only vibes."
-        );
-      }
-      if (!hasImages && !hasVideo) {
-        lines.push(
-          "visuals on strike. one hero image go change the whole mood."
-        );
-      }
-
-      const ctx = (input.context || "").toLowerCase();
-      if (ctx.includes("portfolio")) {
-        lines.push(
-          "portfolio with zero case studies? omo. add 2 short writeups: problem → approach → outcome."
-        );
-      } else if (ctx.includes("docs")) {
-        lines.push(
-          "docs: start with quickstart + examples. less poetry, more copy-paste."
-        );
-      } else if (ctx.includes("project")) {
-        lines.push(
-          "project page? drop live demo + repo link front and center."
-        );
-      }
-
-      lines.push("no bad vibes—roast with love. squad dey oo. 💪");
-
-      const tipsEnabled = input.include_tips !== false;
-      if (tipsEnabled) {
-        const tips = [
-          "add meta description + social preview",
-          "show 1-2 screenshots or a short demo",
-          "keep critical info above the fold",
-        ];
-        lines.push("\nquick tips:");
-        tips.forEach((t) => lines.push(`- ${t}`));
-      }
-
-      const base = lines.join("\n");
-      const intensity = input.intensity || "light";
-      if (intensity === "spicy")
-        return base + "\nlight pepper, heavy respect. correct!";
-      if (intensity === "medium")
-        return base + "\nsmall jab, big help. e go be.";
-      return base;
+      return finalize(lines, intensity, content);
     }
   );
 
-  return [roastGithubTool, roastUrlTool];
+  return [roastGithubProfileTool, roastGithubRepoTool, roastUrlTool];
 }
