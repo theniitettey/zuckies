@@ -443,7 +443,7 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
       let response;
       try {
         response = await ai.generate({
-          model: googleAI.model("gemini-3-pro-preview"),
+          model: googleAI.model("gemini-3-flash"),
           system: systemPrompt,
           messages: messages,
           tools,
