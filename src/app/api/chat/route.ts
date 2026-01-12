@@ -455,14 +455,14 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
       let response;
       try {
         response = await ai.generate({
-          model: googleAI.model("gemini-3-flash-preview"),
+          model: googleAI.model("gemini-3-pro-preview"),
           system: systemPrompt,
           messages: messages,
           tools,
           config: {
             temperature: 0.7,
           },
-          maxTurns: 10, // Increased to allow more tool calls + final response
+          maxTurns: 20, // Increased to allow more tool calls + final response
         });
 
         console.log("AI response received:");
@@ -472,8 +472,19 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
           "- Response object keys:",
           response ? Object.keys(response) : "null"
         );
-        console.log("- Tool calls made:", response?.toolCalls?.length || 0);
+        console.log("- Tool calls made:", response?.toolRequests?.length || 0);
         console.log("- Finish reason:", response?.finishReason);
+        if (response?.toolRequests && response.toolRequests.length > 0) {
+          response.toolRequests.forEach((tr: any, idx: number) => {
+            const name = tr?.toolName || tr?.name || "unknown";
+            const status = tr?.status || "unknown";
+            const input = tr?.input || tr?.arguments || tr;
+            console.log(
+              `Tool executing [${idx}]: ${name} | status: ${status} | input:`,
+              input
+            );
+          });
+        }
 
         // Log the full response object for debugging
         console.log("-🤖AI Response: ", response.text);

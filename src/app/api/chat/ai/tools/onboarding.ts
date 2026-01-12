@@ -9,6 +9,8 @@ import Session, {
 import Applicant from "@/lib/models/applicant";
 import { saveDataSchema } from "../config";
 import { hashSecretPhrase } from "../utils";
+import { logToolExecution } from "./logger";
+import { logToolExecution } from "./logger";
 
 /**
  * Onboarding Tools
@@ -79,7 +81,7 @@ export function createOnboardingTools(
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: save_and_continue", input);
+      logToolExecution("save_and_continue", input);
 
       const dataToSave = { ...input } as Partial<IApplicantData>;
 
@@ -224,7 +226,7 @@ export function createOnboardingTools(
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: start_fresh", input);
+      logToolExecution("start_fresh", input);
 
       if (!input.confirm) {
         return "Confirmation required. Ask the user to confirm they want to start fresh (this will delete their old data).";
@@ -367,7 +369,7 @@ Celebrate the submission, but be clear this is just the first step!`;
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: set_suggestions", input.suggestions);
+      logToolExecution("set_suggestions", input);
       session.suggestions = input.suggestions;
       // Don't save here - will be saved at the end to avoid parallel save issues
       return `Suggestions set: ${input.suggestions.join(", ")}`;

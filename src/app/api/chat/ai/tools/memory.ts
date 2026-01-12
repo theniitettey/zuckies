@@ -1,6 +1,7 @@
 import type { ISession } from "@/lib/models/session";
 import ai from "../config";
 import { z } from "genkit";
+import { logToolExecution } from "./logger";
 
 /**
  * Conversation Memory Tools
@@ -48,7 +49,7 @@ This helps maintain continuity and shows you remember the user.`,
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: summarize_conversation", input);
+      logToolExecution("summarize_conversation", input);
 
       const messages = session.messages;
       const userProfile = session.applicant_data;
@@ -125,10 +126,7 @@ This helps fix buggy state persistence issues.`,
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log(
-        "🛠️ Tool executing: clear_pending_states",
-        input.reason || "user requested"
-      );
+      logToolExecution("clear_pending_states", input);
 
       const hadPendingVerification = !!session.pending_verification;
       const hadPendingRecovery = !!session.pending_recovery;
@@ -170,7 +168,7 @@ Ask the user what they'd like to do now. Be helpful and don't reference the clea
       outputSchema: z.string(),
     },
     async () => {
-      console.log("🛠️ Tool executing: list_capabilities");
+      logToolExecution("list_capabilities", {});
 
       const isCompleted = session.state === "COMPLETED";
       const userName = session.applicant_data?.name

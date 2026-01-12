@@ -4,6 +4,7 @@ import Applicant from "@/lib/models/applicant";
 import Session from "@/lib/models/session";
 import ai from "../config";
 import { z } from "genkit";
+import { logToolExecution } from "./logger";
 
 /**
  * Profile Management Tools
@@ -53,7 +54,7 @@ export function createProfileTools(
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: update_profile", input);
+      logToolExecution("update_profile", input);
 
       const { field, value } = input;
       const oldValue = session.applicant_data[field as keyof IApplicantData];
@@ -178,7 +179,7 @@ DO NOT change to AWAITING_EMAIL or AWAITING_SECRET_PHRASE (security-sensitive).`
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: change_state", input);
+      logToolExecution("change_state", input);
 
       const { target_state, reason } = input;
       const oldState = session.state;
@@ -327,7 +328,7 @@ After they respond, use save_and_continue to save the new value and advance to t
     },
     async (input) => {
       const normalizedEmail = input.email.toLowerCase().trim();
-      console.log("🛠️ Tool executing: find_user_profile", normalizedEmail);
+      logToolExecution("find_user_profile", input);
 
       // Check both Session and Applicant models
       const [userSession, applicant] = await Promise.all([
@@ -450,7 +451,7 @@ After they respond, use save_and_continue to save the new value and advance to t
       outputSchema: z.string(),
     },
     async () => {
-      console.log("🛠️ Tool executing: check_application_status");
+      logToolExecution("check_application_status", {});
 
       // Check Applicant model first (source of truth for completed apps)
       const email = session.applicant_data?.email;

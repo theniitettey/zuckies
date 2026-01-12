@@ -1,6 +1,7 @@
 import type { ISession } from "@/lib/models/session";
 import ai from "../config";
 import { z } from "genkit";
+import { logToolExecution } from "./logger";
 
 /**
  * Roast Tools
@@ -104,6 +105,7 @@ export function createRoastTools(session: ISession) {
       outputSchema: z.string(),
     },
     async (input) => {
+      logToolExecution("roast_github", input);
       const url = normalizeToGitHubUrl(input.handle);
       const result = await fetchWithJina(url);
       const username = url.split("github.com/")[1]?.split("/")[0] || "unknown";
@@ -214,6 +216,7 @@ export function createRoastTools(session: ISession) {
       outputSchema: z.string(),
     },
     async (input) => {
+      logToolExecution("roast_url", input);
       let url = input.url.trim();
       if (url.includes("linkedin.com")) {
         return "linkedin no dey allow me peek. share another link and i go roast gently.";

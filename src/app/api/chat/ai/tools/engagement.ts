@@ -3,6 +3,7 @@ import ai from "../config";
 import { z } from "genkit";
 import Feedback from "@/lib/models/feedback";
 import { OnboardingState } from "@/lib/models/session";
+import { logToolExecution } from "./logger";
 
 /**
  * User Engagement Tools
@@ -51,7 +52,7 @@ export function createEngagementTools(
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: start_meme_war", input);
+      logToolExecution("start_meme_war", input);
 
       if (input.action === "start") {
         session.pending_action = "meme_war";
@@ -106,7 +107,7 @@ export function createEngagementTools(
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: submit_feedback", input);
+      logToolExecution("submit_feedback", input);
 
       try {
         const feedbackDoc = new Feedback({
@@ -213,7 +214,7 @@ export function createEngagementTools(
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: analyze_url", input.url);
+      logToolExecution("analyze_url", input);
 
       try {
         // Normalize URL - handle usernames, partial URLs, etc.
@@ -405,10 +406,7 @@ This allows free-flowing conversation without being stuck in "COMPLETED" state.`
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log(
-        "🛠️ Tool executing: transition_to_free_chat",
-        input.reason || "no reason given"
-      );
+      logToolExecution("transition_to_free_chat", input);
 
       if (session.state !== "COMPLETED" && session.state !== "FREE_CHAT") {
         return "ERROR: Can only transition to FREE_CHAT from COMPLETED state. User must complete onboarding first.";
