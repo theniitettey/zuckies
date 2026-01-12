@@ -150,6 +150,7 @@ States available (in order):
 15. AWAITING_TECH_FOCUS - technologies to focus on
 16. AWAITING_SUCCESS_DEFINITION - how they define success
 17. COMPLETED - finished onboarding
+18. FREE_CHAT - post-completion free interaction
 
 DO NOT change to AWAITING_EMAIL or AWAITING_SECRET_PHRASE (security-sensitive).`,
       inputSchema: z.object({
@@ -169,6 +170,8 @@ DO NOT change to AWAITING_EMAIL or AWAITING_SECRET_PHRASE (security-sensitive).`
             "AWAITING_LEARNING_STYLE",
             "AWAITING_TECH_FOCUS",
             "AWAITING_SUCCESS_DEFINITION",
+            "COMPLETED",
+            "FREE_CHAT",
           ])
           .describe("The state to change to"),
         reason: z
