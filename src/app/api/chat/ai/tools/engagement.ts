@@ -153,12 +153,14 @@ export function createEngagementTools(
     },
     async (input) => {
       try {
+        logToolExecution("search_giphy", input);
         const apiKey = process.env.GIPHY_API_KEY;
         if (!apiKey) {
-          console.error("GIPHY_API_KEY not set");
+          console.error("❌ search_giphy: GIPHY_API_KEY not set");
           return "Giphy unavailable. Use a fallback meme from your instructions.";
         }
 
+        console.log(`🔍 search_giphy: Searching for "${input.query}"...`);
         const response = await fetch(
           `https://api.giphy.com/v1/gifs/search?api_key=${apiKey}&q=${encodeURIComponent(
             input.query
@@ -166,6 +168,9 @@ export function createEngagementTools(
         );
 
         if (!response.ok) {
+          console.error(
+            `❌ search_giphy: API returned status ${response.status}`
+          );
           return "Giphy search failed. Use a fallback meme.";
         }
 
@@ -182,16 +187,20 @@ export function createEngagementTools(
             gif.images.original?.url ||
             gif.images.downsized?.url;
           if (!url) {
+            console.log("❌ search_giphy: No usable GIF URL found");
             return "No usable GIF found. Use a fallback meme.";
           }
-          console.log("Giphy found:", gif.title, url);
-          return `Found a perfect GIF! Include this in your response:\n![${
+          console.log(`✅ search_giphy found: "${gif.title}" | ${url}`);
+          const result = `Found a perfect GIF! Include this in your response:\n![${
             gif.title || input.query
           }](${url})`;
+          console.log(`📨 search_giphy returning GIF markdown`);
+          return result;
         }
+        console.log(`❌ search_giphy: No results for "${input.query}"`);
         return "No GIF found. Use a fallback meme from your instructions.";
       } catch (error) {
-        console.error("Giphy search error:", error);
+        console.error("❌ search_giphy error:", error);
         return "Giphy error. Use a fallback meme.";
       }
     }
@@ -252,7 +261,7 @@ export function createEngagementTools(
           return "LinkedIn profiles cannot be fetched (they block automated access). Just save the URL directly and let them know you couldn't preview it.";
         }
 
-        // Fetch using Jina AI Reader API
+        // Fetch using Jina AI Reader API (same parsing as roast/fetch_with_jina)
         const jinaUrl = `https://r.jina.ai/${url}`;
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
@@ -261,7 +270,7 @@ export function createEngagementTools(
         try {
           response = await fetch(jinaUrl, {
             headers: {
-              Accept: "application/json",
+              Accept: "*/*",
             },
             signal: controller.signal,
           });
@@ -276,16 +285,40 @@ export function createEngagementTools(
           return `Could not fetch the page via Jina (HTTP ${response.status}). The URL might be private, require login, or not exist. Just save it and mention you couldn't preview it.`;
         }
 
-        let markdown: string;
+        let markdown = "";
         try {
-          const data = (await response.json()) as { content?: string };
-          markdown = data.content || "";
+          const raw = await response.text();
+          try {
+            const data = JSON.parse(raw) as {
+              content?: string;
+              title?: string;
+              description?: string;
+              url?: string;
+            };
+            const primaryContent = data.content || "";
+            const header = [data.title, data.description, data.url]
+              .filter(Boolean)
+              .join("\n\n");
+            markdown = [header, primaryContent].filter(Boolean).join("\n\n");
+          } catch {
+            // Fallback: raw markdown/text
+            markdown = raw;
+          }
 
-          if (!markdown) {
+          if (!markdown.trim()) {
+            console.log(
+              `❌ analyze_url: No markdown content returned from ${url}`
+            );
             return `Could not extract content from the page. It might be private or blocked. You can still save the URL and let the user know.`;
           }
+          console.log(
+            `✅ analyze_url fetched: ${url} | content length: ${markdown.length}`
+          );
         } catch (parseError) {
-          console.error("Error parsing Jina response:", parseError);
+          console.error(
+            "❌ analyze_url error parsing Jina response:",
+            parseError
+          );
           return `Could not read the page content. The page might be in an unsupported format. You can still save the URL and let the user know.`;
         }
 
@@ -322,13 +355,6 @@ export function createEngagementTools(
           markdown.match(/description:\s*(.+)/i) ||
           markdown.match(/summary:\s*(.+)/i);
         const description = descMatch ? descMatch[1].trim() : "";
-
-        // Truncate content AGGRESSIVELY - max 3000 chars to avoid AI timeout
-        const maxLength = 3000;
-        const truncatedContent =
-          markdown.length > maxLength
-            ? markdown.slice(0, maxLength) + "..."
-            : markdown;
 
         // Determine page type and generate focused summary
         let pageType = "Web Page";
@@ -368,17 +394,21 @@ export function createEngagementTools(
           pageType = "Documentation";
         }
 
-        return `=== ${pageType}: ${title} ===
+        const result = `=== ${pageType}: ${title} ===
         URL: ${url}
         ${description ? `Description: ${description}` : ""}
         ${summary ? `\n${summary}` : ""}
         
         Key content (excerpt):
-        ${truncatedContent.slice(0, 1500)}
+        ${markdown}
         
         Give brief, encouraging feedback based on what you see. Be specific but concise!`;
+        console.log(
+          `📨 analyze_url returning: ${result.length} chars | type: ${pageType}`
+        );
+        return result;
       } catch (error: unknown) {
-        console.error("URL analysis error:", error);
+        console.error("❌ analyze_url error:", error);
         const errorMessage =
           error instanceof Error && error.name === "AbortError"
             ? "Request timed out (site took too long to respond)"
