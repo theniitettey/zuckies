@@ -10,7 +10,6 @@ import Applicant from "@/lib/models/applicant";
 import { saveDataSchema } from "../config";
 import { hashSecretPhrase } from "../utils";
 import { logToolExecution } from "./logger";
-import { logToolExecution } from "./logger";
 
 /**
  * Onboarding Tools
