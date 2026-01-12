@@ -809,435 +809,220 @@ export default function AdminInterface({
           {/* Detail Panel */}
           <AnimatePresence>
             {((currentView === "applicants" && selectedApplicant) ||
-              (currentView === "feedback" && selectedFeedback)) &&
-              !assistantOpen && (
-                <motion.div
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ duration: 0.3, ease: chatEasing }}
-                  className="flex-1 h-full liquid-glass border-l border-white/10 flex flex-col relative backdrop-blur-xl overflow-hidden"
-                >
-                  {/* Applicant Detail Panel */}
-                  {currentView === "applicants" &&
-                    selectedApplicant &&
-                    selectedApplicant.applicant_data && (
-                      <div className="flex flex-col h-full">
-                        {/* Header */}
-                        <div className="p-6 border-b border-white/10 liquid-glass-light backdrop-blur-xl">
-                          <div className="flex items-start justify-between mb-4">
-                            <h3 className="font-semibold text-sm">
-                              {selectedApplicant.applicant_data?.name}
-                            </h3>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedApplicant(null)}
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-
-                          {/* Action Buttons */}
-                          {selectedApplicant.applicant_data
-                            ?.application_status === "pending" && (
-                            <div className="flex gap-2 mb-4">
-                              <Button
-                                size="sm"
-                                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                                onClick={() =>
-                                  updateApplicationStatus(
-                                    selectedApplicant.session_id,
-                                    "accepted"
-                                  )
-                                }
-                              >
-                                approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex-1"
-                                onClick={() =>
-                                  updateApplicationStatus(
-                                    selectedApplicant.session_id,
-                                    "rejected"
-                                  )
-                                }
-                              >
-                                reject
-                              </Button>
-                            </div>
-                          )}
-
-                          {selectedApplicant.applicant_data
-                            ?.application_status !== "pending" && (
-                            <div className="mb-4 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
-                              status:{" "}
-                              <span className="font-semibold capitalize">
-                                {
-                                  selectedApplicant.applicant_data
-                                    ?.application_status
-                                }
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Details */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                          <div>
-                            <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                              contact
-                            </div>
-                            <div className="space-y-2 text-sm">
-                              <div>
-                                <span className="text-muted-foreground">
-                                  email:
-                                </span>{" "}
-                                <a
-                                  href={`mailto:${selectedApplicant.applicant_data?.email}`}
-                                  className="text-primary hover:underline text-xs"
-                                >
-                                  {selectedApplicant.applicant_data?.email}
-                                </a>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="h-px bg-border" />
-
-                          <div>
-                            <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                              profile
-                            </div>
-                            <div className="space-y-2 text-sm">
-                              <div>
-                                <span className="text-muted-foreground">
-                                  engineering area:
-                                </span>{" "}
-                                <span className="font-medium text-xs">
-                                  {
-                                    selectedApplicant.applicant_data
-                                      ?.engineering_area
-                                  }
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">
-                                  skill level:
-                                </span>{" "}
-                                <span className="font-medium text-xs">
-                                  {
-                                    selectedApplicant.applicant_data
-                                      ?.skill_level
-                                  }
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">
-                                  time commitment:
-                                </span>{" "}
-                                <span className="font-medium text-xs">
-                                  {selectedApplicant.applicant_data
-                                    ?.time_commitment || "not specified"}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="h-px bg-border" />
-
-                          <div>
-                            <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                              goals & interests
-                            </div>
-                            <div className="text-xs leading-relaxed text-foreground bg-white/5 p-3 rounded border border-white/10">
-                              {selectedApplicant.applicant_data?.career_goals}
-                            </div>
-                          </div>
-
-                          {selectedApplicant.applicant_data?.projects && (
-                            <>
-                              <div className="h-px bg-border" />
-                              <div>
-                                <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                                  projects & experience
-                                </div>
-                                <div className="text-xs leading-relaxed text-foreground bg-white/5 p-3 rounded border border-white/10">
-                                  {selectedApplicant.applicant_data?.projects}
-                                </div>
-                              </div>
-                            </>
-                          )}
-
-                          <div className="h-px bg-border" />
-
-                          <div>
-                            <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                              links
-                            </div>
-                            <div className="space-y-2 text-xs">
-                              {selectedApplicant.applicant_data?.github && (
-                                <div>
-                                  <a
-                                    href={
-                                      selectedApplicant.applicant_data.github
-                                    }
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-primary hover:underline flex items-center gap-2"
-                                  >
-                                    → github
-                                  </a>
-                                </div>
-                              )}
-                              {selectedApplicant.applicant_data?.linkedin && (
-                                <div>
-                                  <a
-                                    href={
-                                      selectedApplicant.applicant_data.linkedin
-                                    }
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-primary hover:underline flex items-center gap-2"
-                                  >
-                                    → linkedin
-                                  </a>
-                                </div>
-                              )}
-                              {selectedApplicant.applicant_data?.portfolio && (
-                                <div>
-                                  <a
-                                    href={
-                                      selectedApplicant.applicant_data.portfolio
-                                    }
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-primary hover:underline flex items-center gap-2"
-                                  >
-                                    → portfolio
-                                  </a>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="h-px bg-border" />
-
-                          <div>
-                            <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                              metadata
-                            </div>
-                            <div className="space-y-1 text-xs text-muted-foreground">
-                              <div>
-                                <span>submitted:</span>{" "}
-                                {selectedApplicant.applicant_data?.submitted_at
-                                  ? new Date(
-                                      selectedApplicant.applicant_data.submitted_at
-                                    ).toLocaleDateString()
-                                  : "—"}
-                              </div>
-                              <div>
-                                <span>session id:</span>{" "}
-                                <code className="text-xs bg-white/5 px-1 rounded">
-                                  {selectedApplicant.session_id.slice(0, 8)}...
-                                </code>
-                              </div>
-                              {selectedApplicant.applicant_data
-                                ?.reviewed_at && (
-                                <div>
-                                  <span>reviewed:</span>{" "}
-                                  {new Date(
-                                    selectedApplicant.applicant_data.reviewed_at
-                                  ).toLocaleDateString()}
-                                  {selectedApplicant.applicant_data
-                                    ?.reviewed_by &&
-                                    ` by ${selectedApplicant.applicant_data.reviewed_by}`}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="h-px bg-border" />
-
-                          <div>
-                            <div className="text-xs font-semibold text-orange-300/80 uppercase mb-2">
-                              feedback & notes
-                            </div>
-
-                            {selectedApplicant.applicant_data?.review_notes && (
-                              <div className="mb-4 p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
-                                <div className="text-xs font-semibold text-orange-300 mb-2">
-                                  existing notes:
-                                </div>
-                                <p className="text-xs text-orange-50/90 leading-relaxed whitespace-pre-wrap break-words">
-                                  {
-                                    selectedApplicant.applicant_data
-                                      .review_notes
-                                  }
-                                </p>
-                              </div>
-                            )}
-
-                            <div className="mb-3">
-                              <label className="text-xs font-semibold text-muted-foreground mb-2 block">
-                                add or edit notes
-                              </label>
-                              <textarea
-                                placeholder="your feedback here..."
-                                value={reviewNotes}
-                                onChange={(e) => setReviewNotes(e.target.value)}
-                                className="w-full h-24 text-xs p-3 rounded border border-white/10 bg-white/5 text-foreground resize-none focus:outline-none focus:border-orange-500/50 focus:bg-white/10 transition"
-                              />
-                            </div>
-                            <Button
-                              size="sm"
-                              onClick={saveReviewNotes}
-                              disabled={savingNotes}
-                              className="w-full bg-orange-600 hover:bg-orange-700 text-white"
-                            >
-                              {savingNotes ? "saving..." : "save notes"}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                  {/* Feedback Detail Panel */}
-                  {currentView === "feedback" && selectedFeedback && (
+              (currentView === "feedback" && selectedFeedback)) && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ duration: 0.3, ease: chatEasing }}
+                className="flex-1 h-full liquid-glass border-l border-white/10 flex flex-col relative backdrop-blur-xl"
+              >
+                {/* Applicant Detail Panel */}
+                {currentView === "applicants" &&
+                  selectedApplicant &&
+                  selectedApplicant.applicant_data && (
                     <div className="flex flex-col h-full">
                       {/* Header */}
                       <div className="p-6 border-b border-white/10 liquid-glass-light backdrop-blur-xl">
                         <div className="flex items-start justify-between mb-4">
                           <h3 className="font-semibold text-sm">
-                            feedback details
+                            {selectedApplicant.applicant_data?.name}
                           </h3>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setSelectedFeedback(null)}
+                            onClick={() => setSelectedApplicant(null)}
                           >
                             <X className="w-4 h-4" />
                           </Button>
                         </div>
+
+                        {/* Action Buttons */}
+                        {selectedApplicant.applicant_data
+                          ?.application_status === "pending" && (
+                          <div className="flex gap-2 mb-4">
+                            <Button
+                              size="sm"
+                              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                              onClick={() =>
+                                updateApplicationStatus(
+                                  selectedApplicant.session_id,
+                                  "accepted"
+                                )
+                              }
+                            >
+                              approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() =>
+                                updateApplicationStatus(
+                                  selectedApplicant.session_id,
+                                  "rejected"
+                                )
+                              }
+                            >
+                              reject
+                            </Button>
+                          </div>
+                        )}
+
+                        {selectedApplicant.applicant_data
+                          ?.application_status !== "pending" && (
+                          <div className="mb-4 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+                            status:{" "}
+                            <span className="font-semibold capitalize">
+                              {
+                                selectedApplicant.applicant_data
+                                  ?.application_status
+                              }
+                            </span>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Scrollable Content */}
-                      <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                        {/* Rating */}
+                      {/* Details */}
+                      <div
+                        className={`overflow-y-auto p-6 space-y-4 min-h-0 ${
+                          !assistantOpen ? "flex-1" : ""
+                        }`}
+                      >
                         <div>
                           <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                            rating
+                            contact
                           </div>
-                          <div className="flex items-center gap-1">
-                            {[...Array(5)].map((_, i) => (
-                              <span
-                                key={i}
-                                className={`text-2xl ${
-                                  i < selectedFeedback.rating
-                                    ? "text-amber-400"
-                                    : "text-gray-600"
-                                }`}
+                          <div className="space-y-2 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">
+                                email:
+                              </span>{" "}
+                              <a
+                                href={`mailto:${selectedApplicant.applicant_data?.email}`}
+                                className="text-primary hover:underline text-xs"
                               >
-                                ★
-                              </span>
-                            ))}
-                            <span className="ml-2 text-sm text-muted-foreground">
-                              ({selectedFeedback.rating}/5)
-                            </span>
+                                {selectedApplicant.applicant_data?.email}
+                              </a>
+                            </div>
                           </div>
                         </div>
 
                         <div className="h-px bg-border" />
 
-                        {/* Category */}
-                        {selectedFeedback.category && (
-                          <>
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+                            profile
+                          </div>
+                          <div className="space-y-2 text-sm">
                             <div>
-                              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                                category
-                              </div>
-                              <span className="inline-block px-3 py-1 rounded-full text-xs bg-amber-400/20 text-amber-300 border border-amber-500/30">
-                                {selectedFeedback.category}
+                              <span className="text-muted-foreground">
+                                engineering area:
+                              </span>{" "}
+                              <span className="font-medium text-xs">
+                                {
+                                  selectedApplicant.applicant_data
+                                    ?.engineering_area
+                                }
                               </span>
                             </div>
-                            <div className="h-px bg-border" />
-                          </>
-                        )}
-
-                        {/* User Info */}
-                        {(selectedFeedback.name || selectedFeedback.email) && (
-                          <>
                             <div>
-                              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                                submitted by
-                              </div>
-                              <div className="text-xs space-y-1">
-                                {selectedFeedback.name && (
-                                  <div className="text-foreground">
-                                    {selectedFeedback.name}
-                                  </div>
-                                )}
-                                {selectedFeedback.email && (
-                                  <div className="text-muted-foreground">
-                                    {selectedFeedback.email}
-                                  </div>
-                                )}
-                              </div>
+                              <span className="text-muted-foreground">
+                                skill level:
+                              </span>{" "}
+                              <span className="font-medium text-xs">
+                                {selectedApplicant.applicant_data?.skill_level}
+                              </span>
                             </div>
-                            <div className="h-px bg-border" />
-                          </>
-                        )}
+                            <div>
+                              <span className="text-muted-foreground">
+                                time commitment:
+                              </span>{" "}
+                              <span className="font-medium text-xs">
+                                {selectedApplicant.applicant_data
+                                  ?.time_commitment || "not specified"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
 
-                        {/* Feedback Text */}
-                        {selectedFeedback.feedback && (
+                        <div className="h-px bg-border" />
+
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+                            goals & interests
+                          </div>
+                          <div className="text-xs leading-relaxed text-foreground bg-white/5 p-3 rounded border border-white/10">
+                            {selectedApplicant.applicant_data?.career_goals}
+                          </div>
+                        </div>
+
+                        {selectedApplicant.applicant_data?.projects && (
                           <>
+                            <div className="h-px bg-border" />
                             <div>
                               <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                                feedback
+                                projects & experience
                               </div>
                               <div className="text-xs leading-relaxed text-foreground bg-white/5 p-3 rounded border border-white/10">
-                                {selectedFeedback.feedback}
+                                {selectedApplicant.applicant_data?.projects}
                               </div>
                             </div>
-                            <div className="h-px bg-border" />
                           </>
                         )}
 
-                        {/* Suggestions */}
-                        {selectedFeedback.suggestions && (
-                          <>
-                            <div>
-                              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                                suggestions
-                              </div>
-                              <div className="text-xs leading-relaxed text-foreground bg-white/5 p-3 rounded border border-white/10">
-                                {selectedFeedback.suggestions}
-                              </div>
-                            </div>
-                            <div className="h-px bg-border" />
-                          </>
-                        )}
+                        <div className="h-px bg-border" />
 
-                        {/* Onboarding State */}
-                        {selectedFeedback.onboarding_state && (
-                          <>
-                            <div>
-                              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                                onboarding state
+                        <div>
+                          <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+                            links
+                          </div>
+                          <div className="space-y-2 text-xs">
+                            {selectedApplicant.applicant_data?.github && (
+                              <div>
+                                <a
+                                  href={selectedApplicant.applicant_data.github}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary hover:underline flex items-center gap-2"
+                                >
+                                  → github
+                                </a>
                               </div>
-                              <div className="text-xs text-foreground bg-white/5 p-3 rounded border border-white/10">
-                                <code className="text-xs">
-                                  {selectedFeedback.onboarding_state}
-                                </code>
+                            )}
+                            {selectedApplicant.applicant_data?.linkedin && (
+                              <div>
+                                <a
+                                  href={
+                                    selectedApplicant.applicant_data.linkedin
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary hover:underline flex items-center gap-2"
+                                >
+                                  → linkedin
+                                </a>
                               </div>
-                            </div>
-                            <div className="h-px bg-border" />
-                          </>
-                        )}
+                            )}
+                            {selectedApplicant.applicant_data?.portfolio && (
+                              <div>
+                                <a
+                                  href={
+                                    selectedApplicant.applicant_data.portfolio
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary hover:underline flex items-center gap-2"
+                                >
+                                  → portfolio
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
-                        {/* Metadata */}
+                        <div className="h-px bg-border" />
+
                         <div>
                           <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
                             metadata
@@ -1245,99 +1030,383 @@ export default function AdminInterface({
                           <div className="space-y-1 text-xs text-muted-foreground">
                             <div>
                               <span>submitted:</span>{" "}
-                              {new Date(
-                                selectedFeedback.created_at
-                              ).toLocaleString()}
+                              {selectedApplicant.applicant_data?.submitted_at
+                                ? new Date(
+                                    selectedApplicant.applicant_data.submitted_at
+                                  ).toLocaleDateString()
+                                : "—"}
                             </div>
                             <div>
                               <span>session id:</span>{" "}
                               <code className="text-xs bg-white/5 px-1 rounded">
-                                {selectedFeedback.session_id.slice(0, 12)}...
+                                {selectedApplicant.session_id.slice(0, 8)}...
                               </code>
                             </div>
+                            {selectedApplicant.applicant_data?.reviewed_at && (
+                              <div>
+                                <span>reviewed:</span>{" "}
+                                {new Date(
+                                  selectedApplicant.applicant_data.reviewed_at
+                                ).toLocaleDateString()}
+                                {selectedApplicant.applicant_data
+                                  ?.reviewed_by &&
+                                  ` by ${selectedApplicant.applicant_data.reviewed_by}`}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="h-px bg-border" />
+
+                        <div>
+                          <div className="text-xs font-semibold text-orange-300/80 uppercase mb-2">
+                            feedback & notes
+                          </div>
+
+                          {selectedApplicant.applicant_data?.review_notes && (
+                            <div className="mb-4 p-4 rounded-lg bg-orange-500/10 border border-orange-500/30">
+                              <div className="text-xs font-semibold text-orange-300 mb-2">
+                                existing notes:
+                              </div>
+                              <p className="text-xs text-orange-50/90 leading-relaxed whitespace-pre-wrap break-words">
+                                {selectedApplicant.applicant_data.review_notes}
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="mb-3">
+                            <label className="text-xs font-semibold text-muted-foreground mb-2 block">
+                              add or edit notes
+                            </label>
+                            <textarea
+                              placeholder="your feedback here..."
+                              value={reviewNotes}
+                              onChange={(e) => setReviewNotes(e.target.value)}
+                              className="w-full h-24 text-xs p-3 rounded border border-white/10 bg-white/5 text-foreground resize-none focus:outline-none focus:border-orange-500/50 focus:bg-white/10 transition"
+                            />
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={saveReviewNotes}
+                            disabled={savingNotes}
+                            className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                          >
+                            {savingNotes ? "saving..." : "save notes"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Chat Section (when assistant is toggled) */}
+                      {assistantOpen && (
+                        <div className="border-t border-white/10 flex-1 overflow-hidden flex flex-col min-h-0">
+                          {/* Chat Area */}
+                          <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+                            {chatMessages.map((msg, idx) => (
+                              <ChatMessage
+                                key={idx}
+                                message={{
+                                  id: `msg-${idx}`,
+                                  role:
+                                    msg.role === "admin" ? "user" : "assistant",
+                                  content: msg.content,
+                                  timestamp: Date.now(),
+                                }}
+                              />
+                            ))}
+                            {chatLoading && (
+                              <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="flex gap-2"
+                              >
+                                <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
+                                <div
+                                  className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"
+                                  style={{ animationDelay: "0.2s" }}
+                                />
+                                <div
+                                  className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"
+                                  style={{ animationDelay: "0.4s" }}
+                                />
+                              </motion.div>
+                            )}
+                            <div ref={chatEndRef} />
+                          </div>
+
+                          {/* Chat Input */}
+                          <div className="p-6 border-t border-white/10 liquid-glass-light backdrop-blur-xl">
+                            <div className="flex gap-2">
+                              <Input
+                                placeholder="ask the assistant..."
+                                value={chatInput}
+                                onChange={(e) => setChatInput(e.target.value)}
+                                onKeyPress={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSendMessage();
+                                  }
+                                }}
+                                disabled={chatLoading}
+                                className="flex-1 liquid-glass-pill border-white/10"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={handleSendMessage}
+                                disabled={chatLoading || !chatInput.trim()}
+                                className="bg-orange-600 hover:bg-orange-700 text-white"
+                              >
+                                <Send className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                {/* Feedback Detail Panel */}
+                {currentView === "feedback" && selectedFeedback && (
+                  <div className="flex flex-col h-full">
+                    {/* Header */}
+                    <div className="p-6 border-b border-white/10 liquid-glass-light backdrop-blur-xl">
+                      <div className="flex items-start justify-between mb-4">
+                        <h3 className="font-semibold text-sm">
+                          feedback details
+                        </h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedFeedback(null)}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Scrollable Content */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0">
+                      {/* Rating */}
+                      <div>
+                        <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+                          rating
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {[...Array(5)].map((_, i) => (
+                            <span
+                              key={i}
+                              className={`text-2xl ${
+                                i < selectedFeedback.rating
+                                  ? "text-amber-400"
+                                  : "text-gray-600"
+                              }`}
+                            >
+                              ★
+                            </span>
+                          ))}
+                          <span className="ml-2 text-sm text-muted-foreground">
+                            ({selectedFeedback.rating}/5)
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="h-px bg-border" />
+
+                      {/* Category */}
+                      {selectedFeedback.category && (
+                        <>
+                          <div>
+                            <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+                              category
+                            </div>
+                            <span className="inline-block px-3 py-1 rounded-full text-xs bg-amber-400/20 text-amber-300 border border-amber-500/30">
+                              {selectedFeedback.category}
+                            </span>
+                          </div>
+                          <div className="h-px bg-border" />
+                        </>
+                      )}
+
+                      {/* User Info */}
+                      {(selectedFeedback.name || selectedFeedback.email) && (
+                        <>
+                          <div>
+                            <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+                              submitted by
+                            </div>
+                            <div className="text-xs space-y-1">
+                              {selectedFeedback.name && (
+                                <div className="text-foreground">
+                                  {selectedFeedback.name}
+                                </div>
+                              )}
+                              {selectedFeedback.email && (
+                                <div className="text-muted-foreground">
+                                  {selectedFeedback.email}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="h-px bg-border" />
+                        </>
+                      )}
+
+                      {/* Feedback Text */}
+                      {selectedFeedback.feedback && (
+                        <>
+                          <div>
+                            <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+                              feedback
+                            </div>
+                            <div className="text-xs leading-relaxed text-foreground bg-white/5 p-3 rounded border border-white/10">
+                              {selectedFeedback.feedback}
+                            </div>
+                          </div>
+                          <div className="h-px bg-border" />
+                        </>
+                      )}
+
+                      {/* Suggestions */}
+                      {selectedFeedback.suggestions && (
+                        <>
+                          <div>
+                            <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+                              suggestions
+                            </div>
+                            <div className="text-xs leading-relaxed text-foreground bg-white/5 p-3 rounded border border-white/10">
+                              {selectedFeedback.suggestions}
+                            </div>
+                          </div>
+                          <div className="h-px bg-border" />
+                        </>
+                      )}
+
+                      {/* Onboarding State */}
+                      {selectedFeedback.onboarding_state && (
+                        <>
+                          <div>
+                            <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+                              onboarding state
+                            </div>
+                            <div className="text-xs text-foreground bg-white/5 p-3 rounded border border-white/10">
+                              <code className="text-xs">
+                                {selectedFeedback.onboarding_state}
+                              </code>
+                            </div>
+                          </div>
+                          <div className="h-px bg-border" />
+                        </>
+                      )}
+
+                      {/* Metadata */}
+                      <div>
+                        <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+                          metadata
+                        </div>
+                        <div className="space-y-1 text-xs text-muted-foreground">
+                          <div>
+                            <span>submitted:</span>{" "}
+                            {new Date(
+                              selectedFeedback.created_at
+                            ).toLocaleString()}
+                          </div>
+                          <div>
+                            <span>session id:</span>{" "}
+                            <code className="text-xs bg-white/5 px-1 rounded">
+                              {selectedFeedback.session_id.slice(0, 12)}...
+                            </code>
                           </div>
                         </div>
                       </div>
                     </div>
-                  )}
-                </motion.div>
-              )}
+                  </div>
+                )}
+
+                {/* Assistant Panel Below Detail */}
+                {assistantOpen && !selectedApplicant && !selectedFeedback && (
+                  <motion.div
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.3, ease: chatEasing }}
+                    className="w-[450px] h-full liquid-glass border-l border-white/10 flex flex-col relative backdrop-blur-xl overflow-hidden"
+                  >
+                    {/* Chat Area */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+                      {chatMessages.map((msg, idx) => (
+                        <ChatMessage
+                          key={idx}
+                          message={{
+                            id: `msg-${idx}`,
+                            role: msg.role === "admin" ? "user" : "assistant",
+                            content: msg.content,
+                            timestamp: Date.now(),
+                          }}
+                        />
+                      ))}
+                      {chatLoading && (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="flex gap-2"
+                        >
+                          <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
+                          <div
+                            className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"
+                            style={{ animationDelay: "0.2s" }}
+                          />
+                          <div
+                            className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"
+                            style={{ animationDelay: "0.4s" }}
+                          />
+                        </motion.div>
+                      )}
+                      <div ref={chatEndRef} />
+                    </div>
+
+                    {/* Chat Input */}
+                    <div className="p-6 border-t border-white/10 liquid-glass-light backdrop-blur-xl">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="ask the assistant..."
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          onKeyPress={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendMessage();
+                            }
+                          }}
+                          disabled={chatLoading}
+                          className="flex-1 liquid-glass-pill border-white/10"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={handleSendMessage}
+                          disabled={chatLoading || !chatInput.trim()}
+                          className="bg-orange-600 hover:bg-orange-700 text-white"
+                        >
+                          <Send className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
           </AnimatePresence>
 
-          {/* Assistant Panel */}
+          {/* Assistant Panel (Standalone - when no detail view) */}
           <AnimatePresence>
-            {assistantOpen && (
+            {assistantOpen && !selectedApplicant && !selectedFeedback && (
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
                 transition={{ duration: 0.3, ease: chatEasing }}
-                className={`${
-                  selectedApplicant ? "w-1/3" : "w-[450px]"
-                } h-full liquid-glass border-l border-white/10 flex flex-col relative backdrop-blur-xl overflow-hidden`}
+                className="w-[450px] h-full liquid-glass border-l border-white/10 flex flex-col relative backdrop-blur-xl overflow-hidden"
               >
-                {/* Selected Applicant Preview */}
-                {selectedApplicant && selectedApplicant.applicant_data && (
-                  <div className="p-6 border-b border-white/10 liquid-glass-light backdrop-blur-xl">
-                    <h3 className="font-semibold text-sm mb-3">
-                      reviewing: {selectedApplicant.applicant_data?.name}
-                    </h3>
-                    <div className="space-y-2 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">area:</span>{" "}
-                        <span className="font-medium">
-                          {selectedApplicant.applicant_data?.engineering_area}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">level:</span>{" "}
-                        <span className="font-medium">
-                          {selectedApplicant.applicant_data?.skill_level}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">goals:</span>{" "}
-                        <span className="font-medium line-clamp-2">
-                          {selectedApplicant.applicant_data?.career_goals}
-                        </span>
-                      </div>
-                    </div>
-
-                    {selectedApplicant.applicant_data?.application_status ===
-                      "pending" && (
-                      <div className="flex gap-2 mt-4">
-                        <Button
-                          size="sm"
-                          className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                          onClick={() =>
-                            updateApplicationStatus(
-                              selectedApplicant.session_id,
-                              "accepted"
-                            )
-                          }
-                        >
-                          approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1"
-                          onClick={() =>
-                            updateApplicationStatus(
-                              selectedApplicant.session_id,
-                              "rejected"
-                            )
-                          }
-                        >
-                          reject
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* Chat Area */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
                   {chatMessages.map((msg, idx) => (
                     <ChatMessage
                       key={idx}
