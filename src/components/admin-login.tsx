@@ -9,21 +9,21 @@ import { Lock, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface AdminLoginProps {
-  onLogin: (secret: string, adminName: string) => void;
+  onLogin: (token: string, username: string) => void;
 }
 
 const chatEasing: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
 export default function AdminLogin({ onLogin }: AdminLoginProps) {
-  const [secret, setSecret] = useState("");
-  const [adminName, setAdminName] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!secret.trim()) {
-      setError("admin secret is required");
+    if (!username.trim() || !password.trim()) {
+      setError("username and password are required");
       return;
     }
 
@@ -31,16 +31,19 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
     setError("");
 
     try {
-      // Get token from admin secret
+      // Authenticate with username and password
       const response = await fetch("/api/admin/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret }),
+        body: JSON.stringify({
+          username,
+          password,
+        }),
       });
 
       if (!response.ok) {
         if (response.status === 401) {
-          setError("invalid admin secret");
+          setError("invalid username or password");
           return;
         }
         throw new Error("Authentication failed");
@@ -48,13 +51,15 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
 
       const { token } = await response.json();
 
-      // Store token (not secret)
+      // Store token
       localStorage.setItem("admin_token", token);
       toast.success("logged in successfully");
-      onLogin(token, adminName || "Admin");
+      onLogin(token, username);
     } catch (err) {
       console.error("Login error:", err);
-      setError("couldn't verify secret. check your connection and try again.");
+      setError(
+        "couldn't verify credentials. check your connection and try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -114,36 +119,34 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
           </div>
 
           <form onSubmit={handleLogin} className="space-y-6">
-            {/* Admin Name (Optional) */}
+            {/* Username */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">
-                your name (optional)
-              </label>
+              <label className="text-sm font-medium">username</label>
               <Input
-                placeholder="e.g., michael"
-                value={adminName}
-                onChange={(e) => setAdminName(e.target.value)}
+                placeholder="enter your username"
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setError("");
+                }}
                 disabled={loading}
                 className="lowercase"
               />
             </div>
 
-            {/* Admin Secret */}
+            {/* Password */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">admin secret</label>
+              <label className="text-sm font-medium">password</label>
               <Input
                 type="password"
-                placeholder="enter your admin secret..."
-                value={secret}
+                placeholder="enter your password"
+                value={password}
                 onChange={(e) => {
-                  setSecret(e.target.value);
+                  setPassword(e.target.value);
                   setError("");
                 }}
                 disabled={loading}
               />
-              <p className="text-xs text-muted-foreground">
-                this is used to verify your admin privileges
-              </p>
             </div>
 
             {/* Error Message */}
@@ -161,11 +164,11 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
             {/* Submit Button */}
             <Button
               type="submit"
-              disabled={loading || !secret.trim()}
+              disabled={loading || !username.trim() || !password.trim()}
               className="w-full"
               size="lg"
             >
-              {loading ? "verifying..." : "enter admin dashboard"}
+              {loading ? "verifying..." : "login"}
             </Button>
 
             {/* Help Text */}

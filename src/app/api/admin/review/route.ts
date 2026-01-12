@@ -3,23 +3,27 @@ import connectDB from "@/lib/mongodb";
 import Session, { type ApplicationStatus } from "@/lib/models/session";
 import { signToken, verifyToken } from "@/lib/jwt";
 
-// Admin secret key - in production, use a proper auth system
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "sidequest-admin-2024";
+// Admin credentials from environment
+const ADMIN_PASSWORD = process.env.ADMIN_SECRET || "sidequest-admin-2024";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
 
-// POST - Verify admin secret and generate token
+// POST - Authenticate admin with username and password, generate token
 export async function POST(request: NextRequest) {
   try {
-    const { secret } = await request.json();
+    const { username, password } = await request.json();
 
-    if (secret !== ADMIN_SECRET) {
+    // Verify username and password
+    if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Generate admin token (valid for 24 hours)
-    // Use a dummy email/sessionId for admin tokens
-    const token = signToken({ email: "admin", sessionId: "admin-session" });
+    const token = signToken({
+      email: ADMIN_USERNAME,
+      sessionId: "admin-session",
+    });
 
-    return NextResponse.json({ token });
+    return NextResponse.json({ token, username: ADMIN_USERNAME });
   } catch (error) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
@@ -103,7 +107,8 @@ export async function GET(request: NextRequest) {
       stats,
       applications: applications.map((app) => ({
         session_id: app.session_id,
-        ...app.applicant_data,
+        state: app.state,
+        applicant_data: app.applicant_data,
         created_at: app.created_at,
         updated_at: app.updated_at,
       })),
@@ -174,13 +179,10 @@ export async function PATCH(request: NextRequest) {
     const previousStatus = session.applicant_data.application_status;
     session.applicant_data.application_status = status;
     session.applicant_data.reviewed_at = new Date().toISOString();
+    session.applicant_data.reviewed_by = process.env.ADMIN_USERNAME || "admin";
 
     if (review_notes) {
       session.applicant_data.review_notes = review_notes;
-    }
-
-    if (reviewed_by) {
-      session.applicant_data.reviewed_by = reviewed_by;
     }
 
     await session.save();
