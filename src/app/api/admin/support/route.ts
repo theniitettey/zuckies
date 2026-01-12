@@ -53,10 +53,15 @@ export async function POST(request: NextRequest) {
 
     // Create callback for status updates
     const onStatusChange = async (sessionId: string, status: string) => {
-      await Session.findByIdAndUpdate(sessionId, {
-        "applicant_data.application_status": status,
-        "applicant_data.reviewed_at": new Date().toISOString(),
-      });
+      await Session.findOneAndUpdate(
+        { session_id: sessionId },
+        {
+          $set: {
+            "applicant_data.application_status": status,
+            "applicant_data.reviewed_at": new Date().toISOString(),
+          },
+        }
+      );
     };
 
     // Create callback for saving notes
