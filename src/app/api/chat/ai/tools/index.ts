@@ -6,6 +6,7 @@ import { createOnboardingTools } from "./onboarding";
 import { createProfileTools } from "./profile";
 import { createRecoveryTools } from "./recovery";
 import { createRoastTools } from "./roast";
+import { createFetchTools } from "./fetch";
 
 export function createTools(
   session: ISession,
@@ -29,6 +30,7 @@ export function createTools(
   );
   const memoryTools = createMemoryTools(session, markPendingSave);
   const roastTools = createRoastTools(session);
+  const fetchTools = createFetchTools();
 
   return [
     ...authTools,
@@ -38,5 +40,6 @@ export function createTools(
     ...engagementTools,
     ...memoryTools,
     ...roastTools,
+    ...fetchTools,
   ];
 }

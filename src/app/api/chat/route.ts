@@ -439,35 +439,19 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
         content: [{ text: msg.content }],
       }));
 
-      console.log("Calling ai.generate with tools...");
-      console.log("Current state:", session.state);
-      console.log("Message count:", messages.length);
-      console.log(
-        "Pending verification:",
-        session.pending_verification ? "YES - returning user" : "NO - new user"
-      );
-
       // Single AI generate call - NO RETRY (retrying re-runs tools which breaks state)
       let response;
       try {
         response = await ai.generate({
-          model: googleAI.model("gemini-3-flash-preview"),
+          model: googleAI.model("gemini-3-pro-preview"),
           system: systemPrompt,
           messages: messages,
           tools,
           config: {
             temperature: 0.7,
           },
-          maxTurns: 10, // Increased to allow more tool calls + final response
+          maxTurns: 20, // Increased to allow more tool calls + final response
         });
-
-        console.log("AI response received:");
-        console.log("- Text length:", response?.text?.length || 0);
-        console.log("- Has text:", !!response?.text);
-        console.log(
-          "- Response object keys:",
-          response ? Object.keys(response) : "null"
-        );
 
         // Log the full response object for debugging
         console.log("-🤖AI Response: ", response.text);

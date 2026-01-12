@@ -8,6 +8,7 @@ import Applicant, {
 import Session from "@/lib/models/session";
 import { OnboardingState } from "@/lib/models/session";
 import { hashSecretPhrase } from "../utils";
+import { logToolExecution } from "./logger";
 
 /**
  * Account Recovery Tools
@@ -40,7 +41,7 @@ export function createRecoveryTools(
     },
     async (input) => {
       const normalizedEmail = input.email.toLowerCase().trim();
-      console.log("🛠️ Tool executing: initiate_recovery", normalizedEmail);
+      logToolExecution("initiate_recovery", input);
 
       // Check both Applicant model (preferred) and Session model
       const [applicant, existingSession] = await Promise.all([
@@ -168,7 +169,7 @@ DO NOT tell them what values are on file - ask them to provide the info themselv
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: verify_recovery_answer", input);
+      logToolExecution("verify_recovery_answer", input);
 
       if (!session.pending_recovery) {
         return "ERROR: No recovery in progress. Use initiate_recovery first.";
@@ -318,7 +319,7 @@ Ask if they want to try again with the correct ${fieldConfig.label}, verify a di
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: reset_secret_phrase");
+      logToolExecution("reset_secret_phrase", input);
 
       if (!session.pending_recovery) {
         return "ERROR: No recovery in progress.";
@@ -428,7 +429,7 @@ ${
       outputSchema: z.string(),
     },
     async () => {
-      console.log("🛠️ Tool executing: cancel_recovery");
+      logToolExecution("cancel_recovery", {});
 
       if (!session.pending_recovery) {
         return "No recovery was in progress.";

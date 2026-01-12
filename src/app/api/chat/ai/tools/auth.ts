@@ -4,6 +4,7 @@ import { z } from "genkit";
 import { verifyToken, signToken } from "@/lib/jwt";
 import { hashSecretPhrase } from "../utils";
 import Session from "@/lib/models/session";
+import { logToolExecution } from "./logger";
 
 /**
  * Authentication Tools
@@ -41,7 +42,7 @@ export function createAuthTools(
       outputSchema: z.string(),
     },
     async () => {
-      console.log("🛠️ Tool executing: check_auth_status");
+      logToolExecution("check_auth_status", {});
 
       const hasToken = !!authContext.token;
       const hasEmail = !!session.applicant_data?.email;
@@ -95,7 +96,7 @@ Session Valid: ${session.session_id ? "YES" : "NO"}`;
       outputSchema: z.string(),
     },
     async () => {
-      console.log("🛠️ Tool executing: get_session_info");
+      logToolExecution("get_session_info", {});
 
       const profile = session.applicant_data;
       const messageCount = session.messages?.length || 0;
@@ -143,7 +144,7 @@ Has Pending Action: ${session.pending_action || "NONE"}`;
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: invalidate_session", input.reason);
+      logToolExecution("invalidate_session", input);
 
       // Mark session for logout/re-auth
       session.pending_action = "logout";
@@ -166,7 +167,7 @@ Has Pending Action: ${session.pending_action || "NONE"}`;
       outputSchema: z.string(),
     },
     async () => {
-      console.log("🛠️ Tool executing: extend_session");
+      logToolExecution("extend_session", {});
 
       const email = session.applicant_data?.email;
       if (!email) {
@@ -193,7 +194,7 @@ Has Pending Action: ${session.pending_action || "NONE"}`;
       outputSchema: z.string(),
     },
     async () => {
-      console.log("🛠️ Tool executing: logout_user");
+      logToolExecution("logout_user", {});
 
       // Mark session for logout action
       session.pending_action = "logout";
@@ -213,7 +214,7 @@ Has Pending Action: ${session.pending_action || "NONE"}`;
       outputSchema: z.string(),
     },
     async (input) => {
-      console.log("🛠️ Tool executing: verify_secret_phrase", input);
+      logToolExecution("verify_secret_phrase", input);
 
       if (!session.pending_verification) {
         console.log("No pending verification found");
