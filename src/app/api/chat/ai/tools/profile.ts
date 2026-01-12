@@ -464,8 +464,9 @@ After they respond, use save_and_continue to save the new value and advance to t
 
       if (email) {
         const applicant = await Applicant.findOne({ email });
-        if (applicant) {
-          status = applicant.application_status || "pending";
+        if (applicant && applicant.application_status) {
+          // Only sync from Applicant model if it has a defined status
+          status = applicant.application_status;
           reviewNotes = applicant.review_notes;
           reviewedAt = applicant.reviewed_at;
 
