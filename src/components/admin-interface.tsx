@@ -89,6 +89,7 @@ export default function AdminInterface({
 
   // Admin assistant chat state
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<
     { role: "admin" | "assistant"; content: string }[]
   >([
@@ -253,12 +254,19 @@ export default function AdminInterface({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userMessage,
+          session_id: chatSessionId,
         }),
       });
 
       if (!response.ok) throw new Error("Failed to get response");
 
       const data = await response.json();
+
+      // Update session ID if new
+      if (data.session_id && !chatSessionId) {
+        setChatSessionId(data.session_id);
+      }
+
       setChatMessages((prev) => [
         ...prev,
         { role: "assistant", content: data.message },
