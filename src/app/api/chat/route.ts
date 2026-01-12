@@ -439,18 +439,6 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
         content: [{ text: msg.content }],
       }));
 
-      console.log("Calling ai.generate with tools...");
-      console.log("Current state:", session.state);
-      console.log("Message count:", messages.length);
-      console.log(
-        "Pending verification:",
-        session.pending_verification ? "YES - returning user" : "NO - new user"
-      );
-      console.log(
-        "Available tools:",
-        tools.map((t) => t.name || "unknown")
-      );
-
       // Single AI generate call - NO RETRY (retrying re-runs tools which breaks state)
       let response;
       try {
@@ -464,27 +452,6 @@ what can i help you with today? wanna chat, have a meme war, get some coding hel
           },
           maxTurns: 20, // Increased to allow more tool calls + final response
         });
-
-        console.log("AI response received:");
-        console.log("- Text length:", response?.text?.length || 0);
-        console.log("- Has text:", !!response?.text);
-        console.log(
-          "- Response object keys:",
-          response ? Object.keys(response) : "null"
-        );
-        console.log("- Tool calls made:", response?.toolRequests?.length || 0);
-        console.log("- Finish reason:", response?.finishReason);
-        if (response?.toolRequests && response.toolRequests.length > 0) {
-          response.toolRequests.forEach((tr: any, idx: number) => {
-            const name = tr?.toolName || tr?.name || "unknown";
-            const status = tr?.status || "unknown";
-            const input = tr?.input || tr?.arguments || tr;
-            console.log(
-              `Tool executing [${idx}]: ${name} | status: ${status} | input:`,
-              input
-            );
-          });
-        }
 
         // Log the full response object for debugging
         console.log("-🤖AI Response: ", response.text);
