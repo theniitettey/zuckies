@@ -196,3 +196,101 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// PATCH - Update application status (for admin interface)
+export async function PATCH(request: NextRequest) {
+  try {
+    await connectDB();
+
+    const body = await request.json();
+    const {
+      secret,
+      session_id,
+      application_status,
+      review_notes,
+      reviewed_by,
+    } = body;
+
+    // Simple auth check
+    if (secret !== ADMIN_SECRET) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Validate status - convert "approved" to "accepted" for compatibility
+    let status: ApplicationStatus = application_status;
+    if (application_status === "approved") {
+      status = "accepted";
+    }
+
+    const validStatuses: ApplicationStatus[] = [
+      "pending",
+      "accepted",
+      "rejected",
+    ];
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json(
+        {
+          error: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Find and update session
+    const session = await Session.findOne({ session_id });
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "Application not found" },
+        { status: 404 }
+      );
+    }
+
+    if (session.state !== "COMPLETED") {
+      return NextResponse.json(
+        { error: "Cannot review an incomplete application" },
+        { status: 400 }
+      );
+    }
+
+    // Update application status
+    const previousStatus = session.applicant_data.application_status;
+    session.applicant_data.application_status = status;
+    session.applicant_data.reviewed_at = new Date().toISOString();
+
+    if (review_notes) {
+      session.applicant_data.review_notes = review_notes;
+    }
+
+    if (reviewed_by) {
+      session.applicant_data.reviewed_by = reviewed_by;
+    }
+
+    await session.save();
+
+    console.log(
+      `Application status updated: ${session.applicant_data.email} - ${previousStatus} → ${status}`
+    );
+
+    return NextResponse.json({
+      success: true,
+      message: `Application ${status}!`,
+      application: {
+        session_id: session.session_id,
+        email: session.applicant_data.email,
+        name: session.applicant_data.name,
+        previous_status: previousStatus,
+        new_status: status,
+        review_notes: session.applicant_data.review_notes,
+        reviewed_at: session.applicant_data.reviewed_at,
+        reviewed_by: session.applicant_data.reviewed_by,
+      },
+    });
+  } catch (error) {
+    console.error("Admin PATCH error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
