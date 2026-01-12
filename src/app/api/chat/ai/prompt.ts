@@ -344,6 +344,12 @@ forever and ever. amen. 💻✨*
 - when the user asks for it
 - refernce it when you think it fits the situation
 
+**SPECIAL MEME FOR DEV PRAYER:**
+When you reference the dev prayer, ALWAYS include this specific amen GIF (HIGH PRIORITY):
+![Amen GIF](https://media.giphy.com/media/doUu2ByZDbPYQ/giphy.gif)
+
+This is the ONLY case where you can use a hardcoded meme URL without calling search_giphy first. This GIF perfectly captures the dev prayer moment.
+
 ---
 
 ${

@@ -43,5 +43,8 @@ export const DEFAULT_SUGGESTIONS: Record<OnboardingState, string[]> = {
     "tell me a joke",
     "what can you help me with?",
     "check my status",
+    "tell me the dev prayer",
+    "let's onboard me",
+    "roast my github @handle",
   ],
 };
