@@ -1,9 +1,33 @@
 import { type NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import Session, { type ApplicationStatus } from "@/lib/models/session";
+import { signToken, verifyToken } from "@/lib/jwt";
 
-// Admin secret key - in production, use a proper auth system
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "sidequest-admin-2024";
+// Admin credentials from environment
+const ADMIN_PASSWORD = process.env.ADMIN_SECRET || "sidequest-admin-2024";
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
+
+// POST - Authenticate admin with username and password, generate token
+export async function POST(request: NextRequest) {
+  try {
+    const { username, password } = await request.json();
+
+    // Verify username and password
+    if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Generate admin token (valid for 24 hours)
+    const token = signToken({
+      email: ADMIN_USERNAME,
+      sessionId: "admin-session",
+    });
+
+    return NextResponse.json({ token, username: ADMIN_USERNAME });
+  } catch (error) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+}
 
 // GET - List all applications (with optional status filter)
 export async function GET(request: NextRequest) {
@@ -11,12 +35,13 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     const { searchParams } = new URL(request.url);
-    const secret = searchParams.get("secret");
+    const authHeader = request.headers.get("authorization");
+    const token = authHeader?.replace("Bearer ", "");
     const status = searchParams.get("status") as ApplicationStatus | null;
     const email = searchParams.get("email");
 
-    // Simple auth check
-    if (secret !== ADMIN_SECRET) {
+    // Verify token
+    if (!token || !verifyToken(token)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -82,7 +107,8 @@ export async function GET(request: NextRequest) {
       stats,
       applications: applications.map((app) => ({
         session_id: app.session_id,
-        ...app.applicant_data,
+        state: app.state,
+        applicant_data: app.applicant_data,
         created_at: app.created_at,
         updated_at: app.updated_at,
       })),
@@ -96,26 +122,32 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Update application status
-export async function POST(request: NextRequest) {
+// PATCH - Update application status (for admin interface)
+export async function PATCH(request: NextRequest) {
   try {
     await connectDB();
 
-    const body = await request.json();
-    const { secret, email, session_id, status, review_notes, reviewed_by } =
-      body;
+    const authHeader = request.headers.get("authorization");
+    const token = authHeader?.replace("Bearer ", "");
 
-    // Simple auth check
-    if (secret !== ADMIN_SECRET) {
+    // Verify token
+    if (!token || !verifyToken(token)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Validate status
+    const body = await request.json();
+    const { session_id, application_status, review_notes, reviewed_by } = body;
+
+    // Validate status - convert "approved" to "accepted" for compatibility
+    let status: ApplicationStatus = application_status as ApplicationStatus;
+    if (application_status === "approved") {
+      status = "accepted";
+    }
+
     const validStatuses: ApplicationStatus[] = [
       "pending",
       "accepted",
       "rejected",
-      "waitlisted",
     ];
     if (!validStatuses.includes(status)) {
       return NextResponse.json(
@@ -126,20 +158,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find session by email or session_id
-    let query = {};
-    if (email) {
-      query = { "applicant_data.email": email.toLowerCase() };
-    } else if (session_id) {
-      query = { session_id };
-    } else {
-      return NextResponse.json(
-        { error: "Must provide email or session_id" },
-        { status: 400 }
-      );
-    }
-
-    const session = await Session.findOne(query);
+    // Find and update session
+    const session = await Session.findOne({ session_id });
 
     if (!session) {
       return NextResponse.json(
@@ -159,13 +179,10 @@ export async function POST(request: NextRequest) {
     const previousStatus = session.applicant_data.application_status;
     session.applicant_data.application_status = status;
     session.applicant_data.reviewed_at = new Date().toISOString();
+    session.applicant_data.reviewed_by = process.env.ADMIN_USERNAME || "admin";
 
     if (review_notes) {
       session.applicant_data.review_notes = review_notes;
-    }
-
-    if (reviewed_by) {
-      session.applicant_data.reviewed_by = reviewed_by;
     }
 
     await session.save();
@@ -189,7 +206,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Admin POST error:", error);
+    console.error("Admin PATCH error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
