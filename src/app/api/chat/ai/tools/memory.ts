@@ -197,14 +197,17 @@ Hey ${userName}! Here's what I can do for you:
 - Give feedback on your projects if you share links
 
 🔥 **ROASTS**
-- Playful GitHub roast ("roast my github", share handle or URL)
-- Gentle URL roast for portfolios/docs/projects ("roast this link")
-- Generate roast style guide ("how should you roast?", github/url)
+- Playful GitHub profile roast ("roast my github @theniitettey", uses API stats)
+- Playful GitHub repo roast ("roast my repo theniitettey/zuckies", analyzes README + stars)
+- Gentle URL roast for portfolios/docs/projects ("roast my portfolio https://mysite.com")
 
 🎭 **FUN STUFF**
 - Have meme wars! ("let's have a meme war")
 - Share memes and GIFs
 - Funfool around and have a good time
+
+🔎 **URL FETCH/DEBUG**
+- Quick-read any URL for previews or debugging fetch issues
 
 🔐 **ACCOUNT**
 - Log out ("logout", "sign out")
@@ -243,9 +246,9 @@ Hey ${userName}! I'm helping you through the onboarding process. Here's what I c
 - Share info about the mentor
 
 🔥 **ROASTS**
-- Light GitHub roasts (share handle/URL) — constructive and kind
+- Light GitHub profile roasts (share handle or profile URL) — constructive and kind
+- Light GitHub repo roasts (share repo URL) — analyzes README + quality
 - Gentle URL roasts for portfolios/docs/projects
-- Quick roast style guide (github/url) if you ask for it
 
 🔐 **ACCOUNT**
 - Help returning users verify their identity
