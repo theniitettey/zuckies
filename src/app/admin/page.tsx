@@ -14,8 +14,8 @@ export default function AdminPage() {
   useEffect(() => {
     setMounted(true);
     // Check if already authenticated
-    const storedSecret = localStorage.getItem("admin_secret");
-    if (storedSecret) {
+    const storedToken = localStorage.getItem("admin_token");
+    if (storedToken) {
       setIsAuthenticated(true);
       const storedName = localStorage.getItem("admin_name");
       if (storedName) setAdminName(storedName);
@@ -24,15 +24,15 @@ export default function AdminPage() {
 
   if (!mounted) return null;
 
-  function handleLogin(secret: string, name: string) {
-    localStorage.setItem("admin_secret", secret);
+  function handleLogin(token: string, name: string) {
+    localStorage.setItem("admin_token", token);
     localStorage.setItem("admin_name", name);
     setAdminName(name);
     setIsAuthenticated(true);
   }
 
   function handleLogout() {
-    localStorage.removeItem("admin_secret");
+    localStorage.removeItem("admin_token");
     localStorage.removeItem("admin_name");
     setIsAuthenticated(false);
     setAdminName("Admin");

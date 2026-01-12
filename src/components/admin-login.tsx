@@ -31,10 +31,12 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
     setError("");
 
     try {
-      // Test the secret by fetching applications
-      const response = await fetch(
-        `/api/admin/review?secret=${encodeURIComponent(secret)}`
-      );
+      // Get token from admin secret
+      const response = await fetch("/api/admin/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret }),
+      });
 
       if (!response.ok) {
         if (response.status === 401) {
@@ -44,10 +46,12 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
         throw new Error("Authentication failed");
       }
 
-      // Success - store secret and proceed
-      localStorage.setItem("admin_secret", secret);
+      const { token } = await response.json();
+
+      // Store token (not secret)
+      localStorage.setItem("admin_token", token);
       toast.success("logged in successfully");
-      onLogin(secret, adminName || "Admin");
+      onLogin(token, adminName || "Admin");
     } catch (err) {
       console.error("Login error:", err);
       setError("couldn't verify secret. check your connection and try again.");
@@ -57,26 +61,32 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-card flex items-center justify-center px-4">
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <motion.div
-          animate={{
-            x: [0, 100, 0],
-            y: [0, 50, 0],
-          }}
-          transition={{ duration: 20, repeat: Infinity }}
-          className="absolute top-0 left-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl"
-        />
-        <motion.div
-          animate={{
-            x: [0, -100, 0],
-            y: [0, -50, 0],
-          }}
-          transition={{ duration: 25, repeat: Infinity }}
-          className="absolute bottom-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl"
-        />
-      </div>
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 relative overflow-hidden">
+      {/* Animated gradient mesh background */}
+      <div className="absolute inset-0 bg-gradient-mesh opacity-60" />
+
+      {/* Animated glow orbs - warm organic colors */}
+      <motion.div
+        className="absolute w-[500px] h-[500px] rounded-full bg-orange-500/10 blur-[100px]"
+        animate={{
+          scale: [1, 1.1, 1],
+        }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        style={{ top: "20%", left: "30%" }}
+      />
+      <motion.div
+        className="absolute w-[400px] h-[400px] rounded-full bg-amber-500/10 blur-[80px]"
+        animate={{
+          scale: [1, 1.2, 1],
+        }}
+        transition={{
+          duration: 5,
+          repeat: Infinity,
+          ease: "easeInOut",
+          delay: 1,
+        }}
+        style={{ bottom: "20%", right: "20%" }}
+      />
 
       {/* Login Card */}
       <motion.div
@@ -85,7 +95,7 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
         transition={{ duration: 0.6, ease: chatEasing }}
         className="relative z-10 w-full max-w-md"
       >
-        <Card className="p-8 backdrop-blur-sm border-border/50">
+        <Card className="liquid-glass p-8 backdrop-blur-xl border-white/10">
           <div className="flex items-center justify-center mb-8">
             <motion.div
               animate={{ rotate: 360 }}

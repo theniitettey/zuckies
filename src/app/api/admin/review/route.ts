@@ -1,9 +1,29 @@
 import { type NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import Session, { type ApplicationStatus } from "@/lib/models/session";
+import { signToken, verifyToken } from "@/lib/jwt";
 
 // Admin secret key - in production, use a proper auth system
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "sidequest-admin-2024";
+
+// POST - Verify admin secret and generate token
+export async function POST(request: NextRequest) {
+  try {
+    const { secret } = await request.json();
+
+    if (secret !== ADMIN_SECRET) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Generate admin token (valid for 24 hours)
+    // Use a dummy email/sessionId for admin tokens
+    const token = signToken({ email: "admin", sessionId: "admin-session" });
+
+    return NextResponse.json({ token });
+  } catch (error) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+}
 
 // GET - List all applications (with optional status filter)
 export async function GET(request: NextRequest) {
@@ -11,12 +31,13 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     const { searchParams } = new URL(request.url);
-    const secret = searchParams.get("secret");
+    const authHeader = request.headers.get("authorization");
+    const token = authHeader?.replace("Bearer ", "");
     const status = searchParams.get("status") as ApplicationStatus | null;
     const email = searchParams.get("email");
 
-    // Simple auth check
-    if (secret !== ADMIN_SECRET) {
+    // Verify token
+    if (!token || !verifyToken(token)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -96,128 +117,24 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Update application status
-export async function POST(request: NextRequest) {
-  try {
-    await connectDB();
-
-    const body = await request.json();
-    const { secret, email, session_id, status, review_notes, reviewed_by } =
-      body;
-
-    // Simple auth check
-    if (secret !== ADMIN_SECRET) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Validate status
-    const validStatuses: ApplicationStatus[] = [
-      "pending",
-      "accepted",
-      "rejected",
-      "waitlisted",
-    ];
-    if (!validStatuses.includes(status)) {
-      return NextResponse.json(
-        {
-          error: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
-        },
-        { status: 400 }
-      );
-    }
-
-    // Find session by email or session_id
-    let query = {};
-    if (email) {
-      query = { "applicant_data.email": email.toLowerCase() };
-    } else if (session_id) {
-      query = { session_id };
-    } else {
-      return NextResponse.json(
-        { error: "Must provide email or session_id" },
-        { status: 400 }
-      );
-    }
-
-    const session = await Session.findOne(query);
-
-    if (!session) {
-      return NextResponse.json(
-        { error: "Application not found" },
-        { status: 404 }
-      );
-    }
-
-    if (session.state !== "COMPLETED") {
-      return NextResponse.json(
-        { error: "Cannot review an incomplete application" },
-        { status: 400 }
-      );
-    }
-
-    // Update application status
-    const previousStatus = session.applicant_data.application_status;
-    session.applicant_data.application_status = status;
-    session.applicant_data.reviewed_at = new Date().toISOString();
-
-    if (review_notes) {
-      session.applicant_data.review_notes = review_notes;
-    }
-
-    if (reviewed_by) {
-      session.applicant_data.reviewed_by = reviewed_by;
-    }
-
-    await session.save();
-
-    console.log(
-      `Application status updated: ${session.applicant_data.email} - ${previousStatus} → ${status}`
-    );
-
-    return NextResponse.json({
-      success: true,
-      message: `Application ${status}!`,
-      application: {
-        session_id: session.session_id,
-        email: session.applicant_data.email,
-        name: session.applicant_data.name,
-        previous_status: previousStatus,
-        new_status: status,
-        review_notes: session.applicant_data.review_notes,
-        reviewed_at: session.applicant_data.reviewed_at,
-        reviewed_by: session.applicant_data.reviewed_by,
-      },
-    });
-  } catch (error) {
-    console.error("Admin POST error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
-
 // PATCH - Update application status (for admin interface)
 export async function PATCH(request: NextRequest) {
   try {
     await connectDB();
 
-    const body = await request.json();
-    const {
-      secret,
-      session_id,
-      application_status,
-      review_notes,
-      reviewed_by,
-    } = body;
+    const authHeader = request.headers.get("authorization");
+    const token = authHeader?.replace("Bearer ", "");
 
-    // Simple auth check
-    if (secret !== ADMIN_SECRET) {
+    // Verify token
+    if (!token || !verifyToken(token)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const body = await request.json();
+    const { session_id, application_status, review_notes, reviewed_by } = body;
+
     // Validate status - convert "approved" to "accepted" for compatibility
-    let status: ApplicationStatus = application_status;
+    let status: ApplicationStatus = application_status as ApplicationStatus;
     if (application_status === "approved") {
       status = "accepted";
     }

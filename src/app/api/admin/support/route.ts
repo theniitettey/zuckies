@@ -59,14 +59,14 @@ export async function POST(request: NextRequest) {
     let response;
     try {
       response = await ai.generate({
-        model: googleAI.model("gemini-2-flash"),
+        model: googleAI.model("gemini-3-pro-preview"),
         system: systemPrompt,
         messages,
         tools,
         config: {
           temperature: 0.7,
         },
-        maxTurns: 10, // Allow tool calls + final response
+        maxTurns: 20, // Allow tool calls + final response
       });
     } catch (error) {
       console.error("AI generation error:", error);

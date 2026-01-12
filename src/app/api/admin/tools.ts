@@ -130,12 +130,14 @@ export function createAdminTools(
 
         if (input.email) {
           app = applicants.find(
-            (a) => a.applicant_data?.email?.toLowerCase() === input.email?.toLowerCase()
+            (a) =>
+              a.applicant_data?.email?.toLowerCase() ===
+              input.email?.toLowerCase()
           )?.applicant_data;
         } else if (input.name) {
           const nameLower = input.name.toLowerCase();
-          app = applicants.find(
-            (a) => a.applicant_data?.name?.toLowerCase().includes(nameLower)
+          app = applicants.find((a) =>
+            a.applicant_data?.name?.toLowerCase().includes(nameLower)
           )?.applicant_data;
         }
 
@@ -176,12 +178,8 @@ submitted: ${app.submitted_at}
       description:
         "Change an applicant's application status from pending to accepted or rejected. requires confirmation.",
       inputSchema: z.object({
-        email: z
-          .string()
-          .describe("Applicant email address to update"),
-        status: z
-          .enum(["accepted", "rejected"])
-          .describe("New status to set"),
+        email: z.string().describe("Applicant email address to update"),
+        status: z.enum(["accepted", "rejected"]).describe("New status to set"),
         notes: z
           .string()
           .optional()
@@ -197,7 +195,9 @@ submitted: ${app.submitted_at}
 
         // Find the applicant
         const applicant = applicants.find(
-          (a) => a.applicant_data?.email?.toLowerCase() === input.email?.toLowerCase()
+          (a) =>
+            a.applicant_data?.email?.toLowerCase() ===
+            input.email?.toLowerCase()
         );
 
         if (!applicant) {
@@ -207,9 +207,9 @@ submitted: ${app.submitted_at}
         // Call the update handler
         await onStatusChange(applicant.session_id, input.status);
 
-        return `✅ ${applicant.applicant_data?.name}'s application has been ${input.status}${
-          input.notes ? ` with note: ${input.notes}` : ""
-        }`;
+        return `✅ ${applicant.applicant_data?.name}'s application has been ${
+          input.status
+        }${input.notes ? ` with note: ${input.notes}` : ""}`;
       } catch (error) {
         return `error updating status: ${
           error instanceof Error ? error.message : "unknown error"
@@ -233,7 +233,9 @@ submitted: ${app.submitted_at}
         const stats = {
           total: completed.length,
           pending: completed.filter(
-            (a) => !a.applicant_data?.application_status || a.applicant_data.application_status === "pending"
+            (a) =>
+              !a.applicant_data?.application_status ||
+              a.applicant_data.application_status === "pending"
           ).length,
           accepted: completed.filter(
             (a) => a.applicant_data?.application_status === "accepted"

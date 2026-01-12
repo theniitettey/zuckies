@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ChatMessage from "@/components/chat-message";
 import {
   Search,
   Send,
@@ -86,7 +87,7 @@ export default function AdminInterface({
 
     if (statusFilter !== "all") {
       filtered = filtered.filter(
-        (app) => app.applicant_data.application_status === statusFilter
+        (app) => app.applicant_data?.application_status === statusFilter
       );
     }
 
@@ -94,8 +95,8 @@ export default function AdminInterface({
       filtered = filtered.filter((app) => {
         const query = searchQuery.toLowerCase();
         return (
-          app.applicant_data.name.toLowerCase().includes(query) ||
-          app.applicant_data.email.toLowerCase().includes(query) ||
+          app.applicant_data?.name?.toLowerCase().includes(query) ||
+          app.applicant_data?.email?.toLowerCase().includes(query) ||
           app.session_id.toLowerCase().includes(query)
         );
       });
@@ -188,12 +189,14 @@ export default function AdminInterface({
     status: "accepted" | "rejected"
   ) {
     try {
-      const secret = localStorage.getItem("admin_secret");
+      const token = localStorage.getItem("admin_token");
       const response = await fetch("/api/admin/review", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          secret,
           session_id: sessionId,
           application_status: status,
         }),
@@ -213,13 +216,13 @@ export default function AdminInterface({
   const stats = {
     total: applicants.length,
     pending: applicants.filter(
-      (a) => a.applicant_data.application_status === "pending"
+      (a) => a.applicant_data?.application_status === "pending"
     ).length,
     accepted: applicants.filter(
-      (a) => a.applicant_data.application_status === "accepted"
+      (a) => a.applicant_data?.application_status === "accepted"
     ).length,
     rejected: applicants.filter(
-      (a) => a.applicant_data.application_status === "rejected"
+      (a) => a.applicant_data?.application_status === "rejected"
     ).length,
   };
 
@@ -228,12 +231,12 @@ export default function AdminInterface({
   ): string => {
     switch (status) {
       case "accepted":
-        return "bg-green-50 text-green-700 border-green-200";
+        return "bg-green-500/10 text-green-400 border-green-500/30";
       case "rejected":
-        return "bg-red-50 text-red-700 border-red-200";
+        return "bg-red-500/10 text-red-400 border-red-500/30";
       case "pending":
       default:
-        return "bg-yellow-50 text-yellow-700 border-yellow-200";
+        return "bg-amber-500/10 text-amber-400 border-amber-500/30";
     }
   };
 
@@ -244,13 +247,39 @@ export default function AdminInterface({
   };
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen bg-background flex relative overflow-hidden">
+      {/* Animated gradient mesh background */}
+      <div className="absolute inset-0 bg-gradient-mesh opacity-60" />
+
+      {/* Animated glow orbs - warm organic colors */}
+      <motion.div
+        className="absolute w-[500px] h-[500px] rounded-full bg-orange-500/10 blur-[100px]"
+        animate={{
+          scale: [1, 1.1, 1],
+        }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        style={{ top: "20%", left: "30%" }}
+      />
+      <motion.div
+        className="absolute w-[400px] h-[400px] rounded-full bg-amber-500/10 blur-[80px]"
+        animate={{
+          scale: [1, 1.2, 1],
+        }}
+        transition={{
+          duration: 5,
+          repeat: Infinity,
+          ease: "easeInOut",
+          delay: 1,
+        }}
+        style={{ bottom: "20%", right: "20%" }}
+      />
+
       {/* Sidebar */}
       <motion.div
         initial={false}
         animate={{ width: sidebarOpen ? 280 : 80 }}
         transition={{ duration: 0.3, ease: chatEasing }}
-        className="bg-card border-r border-border flex flex-col"
+        className="liquid-glass border-r border-border/20 flex flex-col relative z-10"
       >
         <div className="p-6 flex items-center justify-between">
           {sidebarOpen && (
@@ -358,9 +387,9 @@ export default function AdminInterface({
       </motion.div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col relative z-10">
         {/* Header */}
-        <div className="bg-card border-b border-border p-6 flex items-center justify-between">
+        <div className="liquid-glass-light border-b border-white/10 p-6 flex items-center justify-between backdrop-blur-xl">
           <div>
             <h2 className="text-2xl font-bold">applications dashboard</h2>
             <p className="text-muted-foreground text-sm mt-1">
@@ -396,14 +425,14 @@ export default function AdminInterface({
             className="border-r border-border flex flex-col overflow-hidden"
           >
             {/* Search Bar */}
-            <div className="p-6 border-b border-border">
+            <div className="p-6 border-b border-white/10 liquid-glass-light backdrop-blur-xl">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder="search by name, email, or session id..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 liquid-glass-pill border-white/10"
                 />
               </div>
             </div>
@@ -434,35 +463,38 @@ export default function AdminInterface({
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       onClick={() => setSelectedApplicant(applicant)}
-                      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                      className={`p-4 rounded-lg cursor-pointer transition-all ${
                         selectedApplicant?.session_id === applicant.session_id
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
+                          ? "liquid-glass-pill border-2 border-orange-500/30 bg-orange-500/5 glow-sm"
+                          : "liquid-glass-pill border-2 border-white/5 hover:border-orange-500/20 hover:bg-white/5"
                       }`}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <h3 className="font-semibold">
-                              {applicant.applicant_data.name}
+                              {applicant.applicant_data?.name}
                             </h3>
                             <div
                               className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                                applicant.applicant_data.application_status
+                                applicant.applicant_data?.application_status ||
+                                  "pending"
                               )}`}
                             >
                               {getStatusIcon(
-                                applicant.applicant_data.application_status
+                                applicant.applicant_data?.application_status ||
+                                  "pending"
                               )}
-                              {applicant.applicant_data.application_status}
+                              {applicant.applicant_data?.application_status ||
+                                "pending"}
                             </div>
                           </div>
                           <p className="text-sm text-muted-foreground mt-1">
-                            {applicant.applicant_data.email}
+                            {applicant.applicant_data?.email}
                           </p>
                           <p className="text-xs text-muted-foreground mt-2">
-                            {applicant.applicant_data.engineering_area} •{" "}
-                            {applicant.applicant_data.skill_level}
+                            {applicant.applicant_data?.engineering_area} •{" "}
+                            {applicant.applicant_data?.skill_level}
                           </p>
                         </div>
                         <Button
@@ -488,36 +520,36 @@ export default function AdminInterface({
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
                 transition={{ duration: 0.3, ease: chatEasing }}
-                className="w-2/5 flex flex-col bg-card border-l border-border"
+                className="w-[450px] liquid-glass border-l border-white/10 flex flex-col relative backdrop-blur-xl"
               >
                 {/* Selected Applicant Preview */}
-                {selectedApplicant && (
-                  <div className="p-6 border-b border-border">
+                {selectedApplicant && selectedApplicant.applicant_data && (
+                  <div className="p-6 border-b border-white/10 liquid-glass-light backdrop-blur-xl">
                     <h3 className="font-semibold text-sm mb-3">
-                      reviewing: {selectedApplicant.applicant_data.name}
+                      reviewing: {selectedApplicant.applicant_data?.name}
                     </h3>
                     <div className="space-y-2 text-sm">
                       <div>
                         <span className="text-muted-foreground">area:</span>{" "}
                         <span className="font-medium">
-                          {selectedApplicant.applicant_data.engineering_area}
+                          {selectedApplicant.applicant_data?.engineering_area}
                         </span>
                       </div>
                       <div>
                         <span className="text-muted-foreground">level:</span>{" "}
                         <span className="font-medium">
-                          {selectedApplicant.applicant_data.skill_level}
+                          {selectedApplicant.applicant_data?.skill_level}
                         </span>
                       </div>
                       <div>
                         <span className="text-muted-foreground">goals:</span>{" "}
                         <span className="font-medium line-clamp-2">
-                          {selectedApplicant.applicant_data.career_goals}
+                          {selectedApplicant.applicant_data?.career_goals}
                         </span>
                       </div>
                     </div>
 
-                    {selectedApplicant.applicant_data.application_status ===
+                    {selectedApplicant.applicant_data?.application_status ===
                       "pending" && (
                       <div className="flex gap-2 mt-4">
                         <Button
@@ -553,29 +585,15 @@ export default function AdminInterface({
                 {/* Chat Area */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
                   {chatMessages.map((msg, idx) => (
-                    <motion.div
+                    <ChatMessage
                       key={idx}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{
-                        duration: 0.3,
-                        ease: chatEasing,
-                        delay: idx * 0.05,
+                      message={{
+                        id: `msg-${idx}`,
+                        role: msg.role === "admin" ? "user" : "assistant",
+                        content: msg.content,
+                        timestamp: Date.now(),
                       }}
-                      className={`flex ${
-                        msg.role === "admin" ? "justify-end" : "justify-start"
-                      }`}
-                    >
-                      <div
-                        className={`max-w-xs px-4 py-2 rounded-lg text-sm ${
-                          msg.role === "admin"
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {msg.content}
-                      </div>
-                    </motion.div>
+                    />
                   ))}
                   {chatLoading && (
                     <motion.div
@@ -598,7 +616,7 @@ export default function AdminInterface({
                 </div>
 
                 {/* Chat Input */}
-                <div className="p-6 border-t border-border">
+                <div className="p-6 border-t border-white/10 liquid-glass-light backdrop-blur-xl">
                   <div className="flex gap-2">
                     <Input
                       placeholder="ask the assistant..."
@@ -611,7 +629,7 @@ export default function AdminInterface({
                         }
                       }}
                       disabled={chatLoading}
-                      className="flex-1"
+                      className="flex-1 liquid-glass-pill border-white/10"
                     />
                     <Button
                       size="sm"
