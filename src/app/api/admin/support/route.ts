@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     let response;
     try {
       response = await ai.generate({
-        model: googleAI.model("gemini-3-flash"),
+        model: googleAI.model("gemini-2.5-flash"),
         system: systemPrompt,
         messages: messageHistory,
         tools,
