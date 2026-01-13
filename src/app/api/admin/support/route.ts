@@ -2,10 +2,16 @@ import { type NextRequest, NextResponse } from "next/server";
 import ai from "@/app/api/chat/ai/config";
 import { googleAI } from "@genkit-ai/google-genai";
 import connectDB from "@/lib/mongodb";
-import Session from "@/lib/models/session";
+import Applicant from "@/lib/models/applicant";
 import AdminSession from "@/lib/models/admin-session";
+import Feedback from "@/lib/models/feedback";
+import Session from "@/lib/models/session";
 import { buildAdminPrompt } from "../prompt";
-import { createAdminTools } from "@/app/api/admin/tools";
+import {
+  createAdminTools,
+  DbOperationOptions,
+  DbOperationResult,
+} from "@/app/api/admin/tools";
 import { v4 as uuidv4 } from "uuid";
 
 // Suppress expected Genkit tool re-registration warnings
@@ -48,15 +54,22 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Fetch all completed applications once
-    const applicants = await Session.find({ state: "COMPLETED" }).lean();
+    // Fetch all submitted applications once
+    const applicants = await Applicant.find({
+      submitted_at: { $exists: true, $ne: null },
+    }).lean();
 
     // Create callback for status updates
-    const onStatusChange = async (sessionId: string, status: string) => {
-      await Session.findByIdAndUpdate(sessionId, {
-        "applicant_data.application_status": status,
-        "applicant_data.reviewed_at": new Date().toISOString(),
-      });
+    const onStatusChange = async (email: string, status: string) => {
+      await Applicant.findOneAndUpdate(
+        { email: email.toLowerCase() },
+        {
+          $set: {
+            application_status: status,
+            reviewed_at: new Date().toISOString(),
+          },
+        }
+      );
     };
 
     // Create callback for saving notes
@@ -101,6 +114,168 @@ export async function POST(request: NextRequest) {
         .join("\n\n");
     };
 
+    // Create callback for flexible database CRUD operations
+    const onDbOperation = async (
+      options: DbOperationOptions
+    ): Promise<DbOperationResult> => {
+      const {
+        operation,
+        collection,
+        filter,
+        projection,
+        sort,
+        limit = 20,
+        skip = 0,
+        document,
+        update,
+      } = options;
+
+      try {
+        const safeFilter = filter && typeof filter === "object" ? filter : {};
+        const safeProjection =
+          projection &&
+          typeof projection === "object" &&
+          Object.keys(projection).length > 0
+            ? projection
+            : undefined;
+        const safeSort =
+          sort && typeof sort === "object" && Object.keys(sort).length > 0
+            ? sort
+            : undefined;
+
+        // Handle each collection separately to avoid TypeScript union issues
+        if (collection === "applicants") {
+          if (operation === "read") {
+            const results = await Applicant.find({
+              ...safeFilter,
+              deleted_at: { $exists: false },
+            })
+              .select(safeProjection || {})
+              .sort(safeSort || {})
+              .skip(skip)
+              .limit(limit)
+              .lean();
+            return { success: true, data: results };
+          }
+          if (operation === "create") {
+            if (!document)
+              return { success: false, error: "No document provided" };
+            const newDoc = await Applicant.create({
+              ...document,
+              created_at: new Date(),
+            });
+            return { success: true, insertedId: newDoc?._id?.toString() };
+          }
+          if (operation === "update") {
+            if (!update) return { success: false, error: "No update provided" };
+            const updateWithTimestamp = update.$set
+              ? { ...update, $set: { ...update.$set, updated_at: new Date() } }
+              : { $set: { ...update, updated_at: new Date() } };
+            const result = await Applicant.updateMany(
+              safeFilter,
+              updateWithTimestamp
+            );
+            return { success: true, modifiedCount: result.modifiedCount };
+          }
+          if (operation === "delete") {
+            const result = await Applicant.updateMany(safeFilter, {
+              $set: { deleted_at: new Date() },
+            });
+            return { success: true, modifiedCount: result.modifiedCount };
+          }
+        }
+
+        if (collection === "feedback") {
+          if (operation === "read") {
+            const results = await Feedback.find({
+              ...safeFilter,
+              deleted_at: { $exists: false },
+            })
+              .select(safeProjection || {})
+              .sort(safeSort || {})
+              .skip(skip)
+              .limit(limit)
+              .lean();
+            return { success: true, data: results };
+          }
+          if (operation === "create") {
+            if (!document)
+              return { success: false, error: "No document provided" };
+            const newDoc = await Feedback.create({
+              ...document,
+              created_at: new Date(),
+            });
+            return { success: true, insertedId: newDoc?._id?.toString() };
+          }
+          if (operation === "update") {
+            if (!update) return { success: false, error: "No update provided" };
+            const updateWithTimestamp = update.$set
+              ? { ...update, $set: { ...update.$set, updated_at: new Date() } }
+              : { $set: { ...update, updated_at: new Date() } };
+            const result = await Feedback.updateMany(
+              safeFilter,
+              updateWithTimestamp
+            );
+            return { success: true, modifiedCount: result.modifiedCount };
+          }
+          if (operation === "delete") {
+            const result = await Feedback.updateMany(safeFilter, {
+              $set: { deleted_at: new Date() },
+            });
+            return { success: true, modifiedCount: result.modifiedCount };
+          }
+        }
+
+        if (collection === "sessions") {
+          if (operation === "read") {
+            const results = await Session.find({
+              ...safeFilter,
+              deleted_at: { $exists: false },
+            })
+              .select(safeProjection || {})
+              .sort(safeSort || {})
+              .skip(skip)
+              .limit(limit)
+              .lean();
+            return { success: true, data: results };
+          }
+          if (operation === "create") {
+            if (!document)
+              return { success: false, error: "No document provided" };
+            const newDoc = await Session.create({
+              ...document,
+              created_at: new Date(),
+            });
+            return { success: true, insertedId: newDoc?._id?.toString() };
+          }
+          if (operation === "update") {
+            if (!update) return { success: false, error: "No update provided" };
+            const updateWithTimestamp = update.$set
+              ? { ...update, $set: { ...update.$set, updated_at: new Date() } }
+              : { $set: { ...update, updated_at: new Date() } };
+            const result = await Session.updateMany(
+              safeFilter,
+              updateWithTimestamp
+            );
+            return { success: true, modifiedCount: result.modifiedCount };
+          }
+          if (operation === "delete") {
+            const result = await Session.updateMany(safeFilter, {
+              $set: { deleted_at: new Date() },
+            });
+            return { success: true, modifiedCount: result.modifiedCount };
+          }
+        }
+
+        return { success: false, error: `Unknown collection or operation` };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        };
+      }
+    };
+
     const systemPrompt = buildAdminPrompt();
 
     // Create admin tools with applicants data and callbacks
@@ -108,7 +283,8 @@ export async function POST(request: NextRequest) {
       applicants,
       onStatusChange,
       onSaveNote,
-      onGetNotes
+      onGetNotes,
+      onDbOperation
     );
 
     // Build message history from session
@@ -134,7 +310,7 @@ export async function POST(request: NextRequest) {
     let response;
     try {
       response = await ai.generate({
-        model: googleAI.model("gemini-3-pro-preview"),
+        model: googleAI.model("gemini-2.5-flash"),
         system: systemPrompt,
         messages: messageHistory,
         tools,

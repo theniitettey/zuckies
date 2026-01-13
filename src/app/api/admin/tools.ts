@@ -15,15 +15,42 @@ import { z } from "genkit";
  * - get_dashboard_stats: Compute metrics from provided applicants
  * - save_note: Save important information to memory for later recall
  * - get_notes: Retrieve saved notes from memory
+ * - query_db: Flexible MongoDB CRUD operations (soft deletes only)
  *
  * @module admin/tools
  */
 
+// Query/CRUD options for the db callback
+export interface DbOperationOptions {
+  operation: "read" | "create" | "update" | "delete";
+  collection: "applicants" | "feedback" | "sessions";
+  // For read operations
+  filter?: Record<string, any>;
+  projection?: Record<string, 0 | 1>;
+  sort?: Record<string, 1 | -1>;
+  limit?: number;
+  skip?: number;
+  // For create operations
+  document?: Record<string, any>;
+  // For update operations
+  update?: Record<string, any>;
+  // For delete (soft) - filter is used to find documents
+}
+
+export interface DbOperationResult {
+  success: boolean;
+  data?: any[];
+  modifiedCount?: number;
+  insertedId?: string;
+  error?: string;
+}
+
 export function createAdminTools(
   applicants: any[],
-  onStatusChange?: (sessionId: string, status: string) => Promise<void>,
+  onStatusChange?: (email: string, status: string) => Promise<void>,
   onSaveNote?: (key: string, value: string) => Promise<void>,
-  onGetNotes?: (key?: string) => Promise<string>
+  onGetNotes?: (key?: string) => Promise<string>,
+  onDbOperation?: (options: DbOperationOptions) => Promise<DbOperationResult>
 ) {
   // List applicants with filtering
   const listApplicantsTool = ai.defineTool(
@@ -52,15 +79,13 @@ export function createAdminTools(
       try {
         const limit = Math.min(input.limit || 15, 50);
 
-        // Filter applicants from provided data
-        let filtered = applicants.filter((app) => app.state === "COMPLETED");
+        // Filter applicants from provided data (already filtered by submitted_at in route)
+        let filtered = [...applicants];
 
         // Status filter
         if (input.status && input.status !== "all") {
           filtered = filtered.filter(
-            (app) =>
-              (app.applicant_data?.application_status || "pending") ===
-              input.status
+            (app) => (app.application_status || "pending") === input.status
           );
         }
 
@@ -68,8 +93,8 @@ export function createAdminTools(
         if (input.search) {
           const searchLower = input.search.toLowerCase();
           filtered = filtered.filter((app) => {
-            const name = app.applicant_data?.name || "";
-            const email = app.applicant_data?.email || "";
+            const name = app.name || "";
+            const email = app.email || "";
             return (
               name.toLowerCase().includes(searchLower) ||
               email.toLowerCase().includes(searchLower)
@@ -86,16 +111,16 @@ export function createAdminTools(
 
         const list = results
           .map((app, idx) => {
-            const status = app.applicant_data?.application_status || "pending";
+            const status = app.application_status || "pending";
             const emoji =
               status === "accepted"
                 ? "✅"
                 : status === "rejected"
                 ? "❌"
                 : "⏳";
-            return `${idx + 1}. ${app.applicant_data?.name} (${
-              app.applicant_data?.email
-            }) | ${app.applicant_data?.engineering_area} | ${emoji} ${status}`;
+            return `${idx + 1}. ${app.name} (${app.email}) | ${
+              app.engineering_area
+            } | ${emoji} ${status}`;
           })
           .join("\n");
 
@@ -134,15 +159,13 @@ export function createAdminTools(
 
         if (input.email) {
           app = applicants.find(
-            (a) =>
-              a.applicant_data?.email?.toLowerCase() ===
-              input.email?.toLowerCase()
-          )?.applicant_data;
+            (a) => a.email?.toLowerCase() === input.email?.toLowerCase()
+          );
         } else if (input.name) {
           const nameLower = input.name.toLowerCase();
           app = applicants.find((a) =>
-            a.applicant_data?.name?.toLowerCase().includes(nameLower)
-          )?.applicant_data;
+            a.name?.toLowerCase().includes(nameLower)
+          );
         }
 
         if (!app) {
@@ -201,21 +224,19 @@ submitted: ${app.submitted_at}
 
         // Find the applicant
         const applicant = applicants.find(
-          (a) =>
-            a.applicant_data?.email?.toLowerCase() ===
-            input.email?.toLowerCase()
+          (a) => a.email?.toLowerCase() === input.email?.toLowerCase()
         );
 
         if (!applicant) {
           return `applicant with email ${input.email} not found`;
         }
 
-        // Call the update handler
-        await onStatusChange(applicant.session_id, input.status);
+        // Call the update handler with email
+        await onStatusChange(applicant.email, input.status);
 
-        return `✅ ${applicant.applicant_data?.name}'s application has been ${
-          input.status
-        }${input.notes ? ` with note: ${input.notes}` : ""}`;
+        return `✅ ${applicant.name}'s application has been ${input.status}${
+          input.notes ? ` with note: ${input.notes}` : ""
+        }`;
       } catch (error) {
         return `error updating status: ${
           error instanceof Error ? error.message : "unknown error"
@@ -235,19 +256,17 @@ submitted: ${app.submitted_at}
     },
     async () => {
       try {
-        const completed = applicants.filter((a) => a.state === "COMPLETED");
+        // Applicants are already filtered by submitted_at in route
         const stats = {
-          total: completed.length,
-          pending: completed.filter(
-            (a) =>
-              !a.applicant_data?.application_status ||
-              a.applicant_data.application_status === "pending"
+          total: applicants.length,
+          pending: applicants.filter(
+            (a) => !a.application_status || a.application_status === "pending"
           ).length,
-          accepted: completed.filter(
-            (a) => a.applicant_data?.application_status === "accepted"
+          accepted: applicants.filter(
+            (a) => a.application_status === "accepted"
           ).length,
-          rejected: completed.filter(
-            (a) => a.applicant_data?.application_status === "rejected"
+          rejected: applicants.filter(
+            (a) => a.application_status === "rejected"
           ).length,
         };
 
@@ -339,6 +358,319 @@ dashboard stats:
     }
   );
 
+  // Flexible database CRUD tool
+  const queryDbTool = ai.defineTool(
+    {
+      name: "query_db",
+      description: `Execute flexible MongoDB CRUD operations on the database. Supports read, create, update, and soft delete.
+
+Available collections:
+- applicants: User applications (fields: email, name, engineering_area, skill_level, career_goals, github, linkedin, portfolio, time_commitment, application_status, submitted_at, reviewed_at, deleted_at)
+- feedback: User feedback submissions (fields: session_id, rating, feedback, suggestions, category, created_at, deleted_at)
+- sessions: Chat sessions with full message content (fields: email, session_id, messages[{role, content, timestamp}], started_at, last_interaction, deleted_at)
+
+Operations:
+1. READ: Query documents with filters, sorting, pagination. Sessions include full message content by default.
+2. CREATE: Insert new documents (use sparingly, mainly for feedback/notes)
+3. UPDATE: Modify existing documents matching a filter
+4. DELETE: Soft delete - sets deleted_at timestamp (documents can be restored)
+
+READ options:
+- raw_json=true: Returns full raw JSON data (useful for detailed inspection)
+- Sessions automatically show message content (truncated to 500 chars each)
+- Use fields parameter to select specific fields
+
+Filter examples (JSON string):
+- Exact match: {"application_status": "pending"}
+- Regex: {"name": {"$regex": "john", "$options": "i"}}
+- Comparison: {"submitted_at": {"$gte": "2024-01-01"}}
+- In list: {"skill_level": {"$in": ["intermediate", "advanced"]}}
+- Exists: {"github": {"$exists": true}}
+- And/Or: {"$and": [...]} or {"$or": [...]}
+
+Update examples (JSON string):
+- Set fields: {"$set": {"application_status": "accepted", "review_notes": "strong candidate"}}
+- Increment: {"$inc": {"recovery_attempts": 1}}
+- Unset: {"$unset": {"temporary_field": ""}}`,
+      inputSchema: z.object({
+        operation: z
+          .enum(["read", "create", "update", "delete"])
+          .describe("CRUD operation to perform"),
+        collection: z
+          .enum(["applicants", "feedback", "sessions"])
+          .describe("Which collection to operate on"),
+        filter_json: z
+          .string()
+          .optional()
+          .describe(
+            'MongoDB filter as JSON string for read/update/delete. Example: \'{"email": "user@example.com"}\''
+          ),
+        document_json: z
+          .string()
+          .optional()
+          .describe(
+            'For CREATE: document to insert as JSON string. Example: \'{"session_id": "abc", "rating": 5, "feedback": "great!"}\''
+          ),
+        update_json: z
+          .string()
+          .optional()
+          .describe(
+            'For UPDATE: MongoDB update operations as JSON string. Example: \'{"$set": {"application_status": "accepted"}}\''
+          ),
+        fields: z
+          .array(z.string())
+          .optional()
+          .describe("For READ: fields to include in results"),
+        sort_by: z.string().optional().describe("For READ: field to sort by"),
+        sort_order: z
+          .enum(["asc", "desc"])
+          .optional()
+          .describe("For READ: sort direction (default: desc)"),
+        limit: z
+          .number()
+          .optional()
+          .describe("For READ: max results (default 20, max 100)"),
+        skip: z
+          .number()
+          .optional()
+          .describe("For READ: results to skip for pagination"),
+        raw_json: z
+          .boolean()
+          .optional()
+          .describe(
+            "For READ: if true, returns full raw JSON output instead of formatted summary. Use this to read full session messages, detailed applicant data, etc."
+          ),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      try {
+        if (!onDbOperation) {
+          return "database operations not available in this context";
+        }
+
+        // Parse filter from JSON string
+        let safeFilter: Record<string, any> = {};
+        if (input.filter_json && typeof input.filter_json === "string") {
+          try {
+            safeFilter = JSON.parse(input.filter_json);
+          } catch (parseError) {
+            return `invalid filter JSON: ${
+              parseError instanceof Error ? parseError.message : "parse error"
+            }`;
+          }
+        }
+
+        // Handle READ operation
+        if (input.operation === "read") {
+          const projection: Record<string, 1> | undefined =
+            input.fields && input.fields.length > 0
+              ? input.fields.reduce(
+                  (acc, field) => ({ ...acc, [field]: 1 }),
+                  {} as Record<string, 1>
+                )
+              : undefined;
+
+          const sort: Record<string, 1 | -1> | undefined =
+            input.sort_by && typeof input.sort_by === "string"
+              ? { [input.sort_by]: input.sort_order === "asc" ? 1 : -1 }
+              : undefined;
+
+          const result = await onDbOperation({
+            operation: "read",
+            collection: input.collection,
+            filter: safeFilter,
+            projection,
+            sort,
+            limit: Math.min(input.limit ?? 20, 100),
+            skip: input.skip ?? 0,
+          });
+
+          if (!result.success) {
+            return `read error: ${result.error}`;
+          }
+
+          const results = result.data || [];
+          if (results.length === 0) {
+            return `no results found in ${input.collection}.`;
+          }
+
+          // If raw_json is requested, return full data
+          if (input.raw_json) {
+            return `${results.length} results (raw JSON):\n${JSON.stringify(
+              results,
+              null,
+              2
+            )}`;
+          }
+
+          // Format results based on collection type
+          if (input.collection === "applicants") {
+            const formatted = results.map((doc, idx) => {
+              const status = doc.application_status || "pending";
+              const emoji =
+                status === "accepted"
+                  ? "✅"
+                  : status === "rejected"
+                  ? "❌"
+                  : "⏳";
+
+              if (input.fields?.length) {
+                const fieldValues = input.fields
+                  .map((f) => `${f}: ${doc[f] ?? "N/A"}`)
+                  .join(" | ");
+                return `${idx + 1}. ${fieldValues}`;
+              }
+
+              return `${idx + 1}. ${doc.name || "unnamed"} (${doc.email}) | ${
+                doc.engineering_area || "N/A"
+              } | ${emoji} ${status}`;
+            });
+            return `${
+              results.length
+            } results from applicants:\n${formatted.join("\n")}`;
+          }
+
+          if (input.collection === "feedback") {
+            const formatted = results.map((doc, idx) => {
+              return `${idx + 1}. rating: ${doc.rating}/5 | "${
+                doc.feedback || "no feedback"
+              }" | ${doc.created_at || "unknown date"}`;
+            });
+            return `${results.length} feedback entries:\n${formatted.join(
+              "\n"
+            )}`;
+          }
+
+          if (input.collection === "sessions") {
+            // Show session details including message content
+            const formatted = results.map((doc, idx) => {
+              const messages = doc.messages || [];
+              const msgCount = messages.length;
+
+              // Format messages for display
+              const messageList = messages
+                .map((msg: any, msgIdx: number) => {
+                  const role = msg.role === "user" ? "👤" : "🤖";
+                  const content = msg.content?.substring(0, 500) || "[empty]";
+                  const truncated = msg.content?.length > 500 ? "..." : "";
+                  return `  ${role} ${content}${truncated}`;
+                })
+                .join("\n");
+
+              return `**Session ${idx + 1}**: ${
+                doc.email || "anonymous"
+              } | ${msgCount} messages | last: ${
+                doc.last_interaction || "unknown"
+              }\n${messageList}`;
+            });
+            return `${results.length} sessions:\n\n${formatted.join(
+              "\n\n---\n\n"
+            )}`;
+          }
+
+          return `${results.length} results:\n${JSON.stringify(
+            results,
+            null,
+            2
+          )}`;
+        }
+
+        // Handle CREATE operation
+        if (input.operation === "create") {
+          if (!input.document_json) {
+            return "create operation requires document_json parameter";
+          }
+
+          let document: Record<string, any>;
+          try {
+            document = JSON.parse(input.document_json);
+          } catch (parseError) {
+            return `invalid document JSON: ${
+              parseError instanceof Error ? parseError.message : "parse error"
+            }`;
+          }
+
+          const result = await onDbOperation({
+            operation: "create",
+            collection: input.collection,
+            document,
+          });
+
+          if (!result.success) {
+            return `create error: ${result.error}`;
+          }
+
+          return `✅ created document in ${input.collection}${
+            result.insertedId ? ` (id: ${result.insertedId})` : ""
+          }`;
+        }
+
+        // Handle UPDATE operation
+        if (input.operation === "update") {
+          if (!input.update_json) {
+            return "update operation requires update_json parameter";
+          }
+
+          if (Object.keys(safeFilter).length === 0) {
+            return "update operation requires filter_json to identify documents to update (safety measure)";
+          }
+
+          let update: Record<string, any>;
+          try {
+            update = JSON.parse(input.update_json);
+          } catch (parseError) {
+            return `invalid update JSON: ${
+              parseError instanceof Error ? parseError.message : "parse error"
+            }`;
+          }
+
+          const result = await onDbOperation({
+            operation: "update",
+            collection: input.collection,
+            filter: safeFilter,
+            update,
+          });
+
+          if (!result.success) {
+            return `update error: ${result.error}`;
+          }
+
+          return `✅ updated ${result.modifiedCount || 0} document(s) in ${
+            input.collection
+          }`;
+        }
+
+        // Handle DELETE (soft) operation
+        if (input.operation === "delete") {
+          if (Object.keys(safeFilter).length === 0) {
+            return "delete operation requires filter_json to identify documents to delete (safety measure)";
+          }
+
+          const result = await onDbOperation({
+            operation: "delete",
+            collection: input.collection,
+            filter: safeFilter,
+          });
+
+          if (!result.success) {
+            return `delete error: ${result.error}`;
+          }
+
+          return `✅ soft deleted ${result.modifiedCount || 0} document(s) in ${
+            input.collection
+          } (can be restored by unsetting deleted_at)`;
+        }
+
+        return "unknown operation";
+      } catch (error) {
+        return `db operation error: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`;
+      }
+    }
+  );
+
   return [
     listApplicantsTool,
     getApplicantTool,
@@ -346,5 +678,6 @@ dashboard stats:
     getStatsTool,
     saveNoteTool,
     getNotesTool,
+    queryDbTool,
   ];
 }

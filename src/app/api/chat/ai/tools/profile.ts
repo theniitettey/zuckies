@@ -62,34 +62,44 @@ export function createProfileTools(
       // URL normalization for url fields
       if (["github", "linkedin", "portfolio"].includes(field)) {
         let url = value.trim();
-        url = url.replace(/^@/, ""); // Remove @ if present
 
-        if (field === "github") {
-          if (!url.includes("github.com")) {
-            const usernameMatch = url.match(/([a-zA-Z0-9_-]+)\/?$/);
-            if (usernameMatch) {
-              url = `https://github.com/${usernameMatch[1]}`;
+        // Check if user is skipping
+        const skipPatterns =
+          /^(skip|skipped|n\/a|na|none|nope|nah|don't have|dont have|later|no|-)$/i;
+        if (skipPatterns.test(url)) {
+          session.applicant_data[field as keyof IApplicantData] =
+            "N/A" as never;
+          console.log(`${field} skipped, storing as N/A`);
+        } else {
+          url = url.replace(/^@/, ""); // Remove @ if present
+
+          if (field === "github") {
+            if (!url.includes("github.com")) {
+              const usernameMatch = url.match(/([a-zA-Z0-9_-]+)\/?$/);
+              if (usernameMatch) {
+                url = `https://github.com/${usernameMatch[1]}`;
+              }
+            } else if (!url.startsWith("http")) {
+              url = `https://${url}`;
             }
-          } else if (!url.startsWith("http")) {
-            url = `https://${url}`;
-          }
-        } else if (field === "linkedin") {
-          if (!url.includes("linkedin.com")) {
-            const usernameMatch = url.match(/([a-zA-Z0-9_-]+)\/?$/);
-            if (usernameMatch) {
-              url = `https://linkedin.com/in/${usernameMatch[1]}`;
+          } else if (field === "linkedin") {
+            if (!url.includes("linkedin.com")) {
+              const usernameMatch = url.match(/([a-zA-Z0-9_-]+)\/?$/);
+              if (usernameMatch) {
+                url = `https://linkedin.com/in/${usernameMatch[1]}`;
+              }
+            } else if (!url.startsWith("http")) {
+              url = `https://${url}`;
             }
-          } else if (!url.startsWith("http")) {
-            url = `https://${url}`;
+          } else if (field === "portfolio") {
+            if (!url.startsWith("http") && url.includes(".")) {
+              url = `https://${url}`;
+            }
           }
-        } else if (field === "portfolio") {
-          if (!url.startsWith("http") && url.includes(".")) {
-            url = `https://${url}`;
-          }
+
+          session.applicant_data[field as keyof IApplicantData] = url as never;
+          console.log(`Normalized ${field} URL:`, url);
         }
-
-        session.applicant_data[field as keyof IApplicantData] = url as never;
-        console.log(`Normalized ${field} URL:`, url);
       } else {
         session.applicant_data[field as keyof IApplicantData] = value as never;
       }
