@@ -905,6 +905,7 @@ export default function AdminInterface({
                     </h3>
                     <div className="flex flex-wrap gap-2">
                       {selectedApplicant.applicant_data?.github &&
+                        selectedApplicant.applicant_data.github !== "N/A" &&
                         !selectedApplicant.applicant_data.github.includes(
                           "skipped"
                         ) && (
@@ -914,6 +915,7 @@ export default function AdminInterface({
                           />
                         )}
                       {selectedApplicant.applicant_data?.linkedin &&
+                        selectedApplicant.applicant_data.linkedin !== "N/A" &&
                         !selectedApplicant.applicant_data.linkedin.includes(
                           "skipped"
                         ) && (
@@ -923,6 +925,7 @@ export default function AdminInterface({
                           />
                         )}
                       {selectedApplicant.applicant_data?.portfolio &&
+                        selectedApplicant.applicant_data.portfolio !== "N/A" &&
                         !selectedApplicant.applicant_data.portfolio.includes(
                           "skipped"
                         ) && (

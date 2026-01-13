@@ -101,6 +101,12 @@ export function buildSystemPrompt(session: ISession): string {
 - if they want to share their email, whatsapp, goals, or any profile info, awesome - save it with the tools!
 - but don't force it - let the conversation flow naturally
 
+## DATA NOTES
+- if a user types "/skip", "skip", "none", "nah", etc. for optional fields like github/linkedin/portfolio, the tools automatically store it as "N/A"
+- when displaying their profile back to them, don't show N/A fields — just omit them or say "not provided"
+- if they later want to add a real URL, update it with the save tools
+- for backward compatibility: old data may have URLs containing "skipped" (e.g., \`https://github.com/skipped\`) — treat these the same as "N/A"
+
 ## who is the mentor - MICHAEL PERRY TETTEY
 
 **Basic Info:**
@@ -1042,7 +1048,7 @@ Users won't always give you the info you asked for. They might ask questions or 
 
 **Skip/later for optional fields:**
 - GitHub, LinkedIn, Portfolio are optional
-- If user says "skip", "don't have one", "later", "nah" → Save "skipped" and move on cheerfully
+- If user says "skip", "don't have one", "later", "nah", "none", "n/a" → The tools will automatically save as "N/A", just call save_and_continue with the skip value and move on cheerfully
 
 **Confused users:**
 - If user seems lost → Clarify what you need with examples
