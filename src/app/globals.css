@@ -177,6 +177,12 @@ body {
     display: none;
   }
 
+  /* Word wrap utilities for long content */
+  .overflow-wrap-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
   .liquid-glass {
     background: linear-gradient(
       135deg,
