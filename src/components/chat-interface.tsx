@@ -1450,7 +1450,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
             </motion.button>
 
             {/* Text input with meme preview */}
-            <div className="flex-1 min-w-0 flex flex-col">
+            <div className="flex-1 min-w-0 max-w-full overflow-hidden flex flex-col">
               {/* Meme preview - shows attached memes above input */}
               {hasMemeInInput && (
                 <div className="px-2 pt-2 pb-1 flex flex-wrap gap-2">
@@ -1500,7 +1500,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                   const newText = e.target.value;
                   setInput(memes.join("") + newText);
                   // Auto-resize
-                  e.target.style.height = "auto";
+                  e.target.style.height = "40px";
                   e.target.style.height =
                     Math.min(e.target.scrollHeight, 100) + "px";
                 }}
@@ -1518,8 +1518,12 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                 }
                 disabled={isLoading}
                 rows={1}
-                className="w-full bg-transparent border-none outline-none px-2 py-2 sm:py-2.5 text-foreground placeholder:text-foreground/30 text-base resize-none"
-                style={{ minHeight: "40px", maxHeight: "100px" }}
+                className="w-full bg-transparent border-none outline-none px-2 py-2 sm:py-2.5 text-foreground placeholder:text-foreground/30 text-base resize-none overflow-y-auto scrollbar-hide"
+                style={{
+                  height: "40px",
+                  minHeight: "40px",
+                  maxHeight: "100px",
+                }}
               />
             </div>
 
