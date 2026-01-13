@@ -15,15 +15,42 @@ import { z } from "genkit";
  * - get_dashboard_stats: Compute metrics from provided applicants
  * - save_note: Save important information to memory for later recall
  * - get_notes: Retrieve saved notes from memory
+ * - query_db: Flexible MongoDB CRUD operations (soft deletes only)
  *
  * @module admin/tools
  */
+
+// Query/CRUD options for the db callback
+export interface DbOperationOptions {
+  operation: "read" | "create" | "update" | "delete";
+  collection: "applicants" | "feedback" | "sessions";
+  // For read operations
+  filter?: Record<string, any>;
+  projection?: Record<string, 0 | 1>;
+  sort?: Record<string, 1 | -1>;
+  limit?: number;
+  skip?: number;
+  // For create operations
+  document?: Record<string, any>;
+  // For update operations
+  update?: Record<string, any>;
+  // For delete (soft) - filter is used to find documents
+}
+
+export interface DbOperationResult {
+  success: boolean;
+  data?: any[];
+  modifiedCount?: number;
+  insertedId?: string;
+  error?: string;
+}
 
 export function createAdminTools(
   applicants: any[],
   onStatusChange?: (email: string, status: string) => Promise<void>,
   onSaveNote?: (key: string, value: string) => Promise<void>,
-  onGetNotes?: (key?: string) => Promise<string>
+  onGetNotes?: (key?: string) => Promise<string>,
+  onDbOperation?: (options: DbOperationOptions) => Promise<DbOperationResult>
 ) {
   // List applicants with filtering
   const listApplicantsTool = ai.defineTool(
@@ -331,6 +358,290 @@ dashboard stats:
     }
   );
 
+  // Flexible database CRUD tool
+  const queryDbTool = ai.defineTool(
+    {
+      name: "query_db",
+      description: `Execute flexible MongoDB CRUD operations on the database. Supports read, create, update, and soft delete.
+
+Available collections:
+- applicants: User applications (fields: email, name, engineering_area, skill_level, career_goals, github, linkedin, portfolio, time_commitment, application_status, submitted_at, reviewed_at, deleted_at)
+- feedback: User feedback submissions (fields: session_id, rating, feedback, suggestions, category, created_at, deleted_at)
+- sessions: Chat sessions (fields: email, session_id, messages, started_at, last_interaction, deleted_at)
+
+Operations:
+1. READ: Query documents with filters, sorting, pagination
+2. CREATE: Insert new documents (use sparingly, mainly for feedback/notes)
+3. UPDATE: Modify existing documents matching a filter
+4. DELETE: Soft delete - sets deleted_at timestamp (documents can be restored)
+
+Filter examples (JSON string):
+- Exact match: {"application_status": "pending"}
+- Regex: {"name": {"$regex": "john", "$options": "i"}}
+- Comparison: {"submitted_at": {"$gte": "2024-01-01"}}
+- In list: {"skill_level": {"$in": ["intermediate", "advanced"]}}
+- Exists: {"github": {"$exists": true}}
+- And/Or: {"$and": [...]} or {"$or": [...]}
+
+Update examples (JSON string):
+- Set fields: {"$set": {"application_status": "accepted", "review_notes": "strong candidate"}}
+- Increment: {"$inc": {"recovery_attempts": 1}}
+- Unset: {"$unset": {"temporary_field": ""}}`,
+      inputSchema: z.object({
+        operation: z
+          .enum(["read", "create", "update", "delete"])
+          .describe("CRUD operation to perform"),
+        collection: z
+          .enum(["applicants", "feedback", "sessions"])
+          .describe("Which collection to operate on"),
+        filter_json: z
+          .string()
+          .optional()
+          .describe(
+            'MongoDB filter as JSON string for read/update/delete. Example: \'{"email": "user@example.com"}\''
+          ),
+        document_json: z
+          .string()
+          .optional()
+          .describe(
+            'For CREATE: document to insert as JSON string. Example: \'{"session_id": "abc", "rating": 5, "feedback": "great!"}\''
+          ),
+        update_json: z
+          .string()
+          .optional()
+          .describe(
+            'For UPDATE: MongoDB update operations as JSON string. Example: \'{"$set": {"application_status": "accepted"}}\''
+          ),
+        fields: z
+          .array(z.string())
+          .optional()
+          .describe("For READ: fields to include in results"),
+        sort_by: z.string().optional().describe("For READ: field to sort by"),
+        sort_order: z
+          .enum(["asc", "desc"])
+          .optional()
+          .describe("For READ: sort direction (default: desc)"),
+        limit: z
+          .number()
+          .optional()
+          .describe("For READ: max results (default 20, max 100)"),
+        skip: z
+          .number()
+          .optional()
+          .describe("For READ: results to skip for pagination"),
+        raw_json: z
+          .boolean()
+          .optional()
+          .describe(
+            "For READ: if true, returns full raw JSON output instead of formatted summary. Use this to read full session messages, detailed applicant data, etc."
+          ),
+      }),
+      outputSchema: z.string(),
+    },
+    async (input) => {
+      try {
+        if (!onDbOperation) {
+          return "database operations not available in this context";
+        }
+
+        // Parse filter from JSON string
+        let safeFilter: Record<string, any> = {};
+        if (input.filter_json && typeof input.filter_json === "string") {
+          try {
+            safeFilter = JSON.parse(input.filter_json);
+          } catch (parseError) {
+            return `invalid filter JSON: ${
+              parseError instanceof Error ? parseError.message : "parse error"
+            }`;
+          }
+        }
+
+        // Handle READ operation
+        if (input.operation === "read") {
+          const projection: Record<string, 1> | undefined =
+            input.fields && input.fields.length > 0
+              ? input.fields.reduce(
+                  (acc, field) => ({ ...acc, [field]: 1 }),
+                  {} as Record<string, 1>
+                )
+              : undefined;
+
+          const sort: Record<string, 1 | -1> | undefined =
+            input.sort_by && typeof input.sort_by === "string"
+              ? { [input.sort_by]: input.sort_order === "asc" ? 1 : -1 }
+              : undefined;
+
+          const result = await onDbOperation({
+            operation: "read",
+            collection: input.collection,
+            filter: safeFilter,
+            projection,
+            sort,
+            limit: Math.min(input.limit ?? 20, 100),
+            skip: input.skip ?? 0,
+          });
+
+          if (!result.success) {
+            return `read error: ${result.error}`;
+          }
+
+          const results = result.data || [];
+          if (results.length === 0) {
+            return `no results found in ${input.collection}.`;
+          }
+
+          // Format results based on collection type
+          if (input.collection === "applicants") {
+            const formatted = results.map((doc, idx) => {
+              const status = doc.application_status || "pending";
+              const emoji =
+                status === "accepted"
+                  ? "✅"
+                  : status === "rejected"
+                  ? "❌"
+                  : "⏳";
+
+              if (input.fields?.length) {
+                const fieldValues = input.fields
+                  .map((f) => `${f}: ${doc[f] ?? "N/A"}`)
+                  .join(" | ");
+                return `${idx + 1}. ${fieldValues}`;
+              }
+
+              return `${idx + 1}. ${doc.name || "unnamed"} (${doc.email}) | ${
+                doc.engineering_area || "N/A"
+              } | ${emoji} ${status}`;
+            });
+            return `${
+              results.length
+            } results from applicants:\n${formatted.join("\n")}`;
+          }
+
+          if (input.collection === "feedback") {
+            const formatted = results.map((doc, idx) => {
+              return `${idx + 1}. rating: ${doc.rating}/5 | "${
+                doc.feedback || "no feedback"
+              }" | ${doc.created_at || "unknown date"}`;
+            });
+            return `${results.length} feedback entries:\n${formatted.join(
+              "\n"
+            )}`;
+          }
+
+          if (input.collection === "sessions") {
+            const formatted = results.map((doc, idx) => {
+              const msgCount = doc.messages?.length || 0;
+              return `${idx + 1}. ${
+                doc.email || "anonymous"
+              } | ${msgCount} messages | last: ${
+                doc.last_interaction || "unknown"
+              }`;
+            });
+            return `${results.length} sessions:\n${formatted.join("\n")}`;
+          }
+
+          return `${results.length} results:\n${JSON.stringify(
+            results,
+            null,
+            2
+          )}`;
+        }
+
+        // Handle CREATE operation
+        if (input.operation === "create") {
+          if (!input.document_json) {
+            return "create operation requires document_json parameter";
+          }
+
+          let document: Record<string, any>;
+          try {
+            document = JSON.parse(input.document_json);
+          } catch (parseError) {
+            return `invalid document JSON: ${
+              parseError instanceof Error ? parseError.message : "parse error"
+            }`;
+          }
+
+          const result = await onDbOperation({
+            operation: "create",
+            collection: input.collection,
+            document,
+          });
+
+          if (!result.success) {
+            return `create error: ${result.error}`;
+          }
+
+          return `✅ created document in ${input.collection}${
+            result.insertedId ? ` (id: ${result.insertedId})` : ""
+          }`;
+        }
+
+        // Handle UPDATE operation
+        if (input.operation === "update") {
+          if (!input.update_json) {
+            return "update operation requires update_json parameter";
+          }
+
+          if (Object.keys(safeFilter).length === 0) {
+            return "update operation requires filter_json to identify documents to update (safety measure)";
+          }
+
+          let update: Record<string, any>;
+          try {
+            update = JSON.parse(input.update_json);
+          } catch (parseError) {
+            return `invalid update JSON: ${
+              parseError instanceof Error ? parseError.message : "parse error"
+            }`;
+          }
+
+          const result = await onDbOperation({
+            operation: "update",
+            collection: input.collection,
+            filter: safeFilter,
+            update,
+          });
+
+          if (!result.success) {
+            return `update error: ${result.error}`;
+          }
+
+          return `✅ updated ${result.modifiedCount || 0} document(s) in ${
+            input.collection
+          }`;
+        }
+
+        // Handle DELETE (soft) operation
+        if (input.operation === "delete") {
+          if (Object.keys(safeFilter).length === 0) {
+            return "delete operation requires filter_json to identify documents to delete (safety measure)";
+          }
+
+          const result = await onDbOperation({
+            operation: "delete",
+            collection: input.collection,
+            filter: safeFilter,
+          });
+
+          if (!result.success) {
+            return `delete error: ${result.error}`;
+          }
+
+          return `✅ soft deleted ${result.modifiedCount || 0} document(s) in ${
+            input.collection
+          } (can be restored by unsetting deleted_at)`;
+        }
+
+        return "unknown operation";
+      } catch (error) {
+        return `db operation error: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`;
+      }
+    }
+  );
+
   return [
     listApplicantsTool,
     getApplicantTool,
@@ -338,5 +649,6 @@ dashboard stats:
     getStatsTool,
     saveNoteTool,
     getNotesTool,
+    queryDbTool,
   ];
 }
