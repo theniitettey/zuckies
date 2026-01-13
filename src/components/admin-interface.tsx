@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -1194,7 +1196,69 @@ export default function AdminInterface({
                           : "liquid-glass-pill text-foreground/80 rounded-2xl rounded-bl-md"
                       }`}
                     >
-                      {msg.content}
+                      {msg.role === "admin" ? (
+                        msg.content
+                      ) : (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            p: ({ children }) => (
+                              <p className="mb-2 last:mb-0">{children}</p>
+                            ),
+                            strong: ({ children }) => (
+                              <strong className="font-semibold text-foreground">
+                                {children}
+                              </strong>
+                            ),
+                            em: ({ children }) => (
+                              <em className="text-orange-400/90">{children}</em>
+                            ),
+                            ul: ({ children }) => (
+                              <ul className="mb-2 space-y-1 ml-1">
+                                {children}
+                              </ul>
+                            ),
+                            ol: ({ children }) => (
+                              <ol className="mb-2 space-y-1 ml-1 list-decimal list-inside">
+                                {children}
+                              </ol>
+                            ),
+                            li: ({ children }) => (
+                              <li className="flex gap-2">
+                                <span className="text-orange-400/60">•</span>
+                                <span>{children}</span>
+                              </li>
+                            ),
+                            a: ({ href, children }) => (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-orange-400 hover:text-orange-300 underline underline-offset-2 transition-colors"
+                              >
+                                {children}
+                              </a>
+                            ),
+                            code: ({ children }) => (
+                              <code className="text-orange-400/90 text-xs font-mono bg-foreground/10 px-1.5 py-0.5 rounded">
+                                {children}
+                              </code>
+                            ),
+                            pre: ({ children }) => (
+                              <pre className="bg-foreground/10 p-3 rounded-xl overflow-x-auto my-2 text-xs font-mono">
+                                {children}
+                              </pre>
+                            ),
+                            blockquote: ({ children }) => (
+                              <blockquote className="border-l-2 border-orange-400/30 pl-3 my-2 text-foreground/70 italic">
+                                {children}
+                              </blockquote>
+                            ),
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      )}
                     </div>
                   </motion.div>
                 ))}
