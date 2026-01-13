@@ -51,8 +51,7 @@ const AdminSessionSchema = new Schema<IAdminSession>(
   }
 );
 
-// Index for faster lookups
-AdminSessionSchema.index({ session_id: 1 });
+// Index for faster lookups (session_id already indexed via unique: true)
 AdminSessionSchema.index({ admin_id: 1 });
 
 const AdminSession: Model<IAdminSession> =
