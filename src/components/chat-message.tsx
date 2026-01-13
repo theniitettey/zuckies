@@ -189,16 +189,21 @@ export default function ChatMessage({
     : cleanDisplayContent(typedContent);
 
   return (
-    <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
+    <div
+      className={cn(
+        "flex flex-col w-full",
+        isUser ? "items-end" : "items-start"
+      )}
+    >
       <div
         className={cn(
-          "max-w-[85%] sm:max-w-[75%] text-[15px] sm:text-base leading-relaxed",
+          "max-w-[85%] sm:max-w-[75%] text-[15px] sm:text-base leading-relaxed break-words overflow-hidden",
           isUser ? "text-right" : "text-left"
         )}
       >
         {isUser ? (
           // User bubble - iMessage green/orange style
-          <div className="inline-block bg-orange-500 text-white px-4 py-2.5 rounded-[20px] rounded-br-[4px] shadow-sm">
+          <div className="inline-block bg-orange-500 text-white px-4 py-2.5 rounded-[20px] rounded-br-[4px] shadow-sm break-words overflow-wrap-anywhere">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -238,7 +243,7 @@ export default function ChatMessage({
           </div>
         ) : (
           // AI bubble - gray/glass style like received iMessage
-          <div className="inline-block liquid-glass-pill px-4 py-2.5 rounded-[20px] rounded-bl-[4px]">
+          <div className="inline-block liquid-glass-pill px-4 py-2.5 rounded-[20px] rounded-bl-[4px] break-words overflow-wrap-anywhere">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{

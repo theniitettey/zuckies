@@ -148,49 +148,71 @@ export function createOnboardingTools(
       }
 
       // Normalize URLs - construct full URLs from usernames
+      // Handle skip variations - store as N/A
+      const skipPatterns =
+        /^(skip|skipped|n\/a|na|none|nope|nah|don't have|dont have|later|no|-)$/i;
+
       if (dataToSave.github) {
         let github = dataToSave.github.trim();
-        // Remove @ if present
-        github = github.replace(/^@/, "");
-        // If it's just a username (no slashes, no dots except in domain)
-        if (!github.includes("github.com")) {
-          // Extract username if they gave a partial URL or just username
-          const usernameMatch = github.match(/([a-zA-Z0-9_-]+)\/?$/);
-          if (usernameMatch) {
-            github = `https://github.com/${usernameMatch[1]}`;
+        // Check if user is skipping
+        if (skipPatterns.test(github)) {
+          dataToSave.github = "N/A";
+          console.log("GitHub skipped, storing as N/A");
+        } else {
+          // Remove @ if present
+          github = github.replace(/^@/, "");
+          // If it's just a username (no slashes, no dots except in domain)
+          if (!github.includes("github.com")) {
+            // Extract username if they gave a partial URL or just username
+            const usernameMatch = github.match(/([a-zA-Z0-9_-]+)\/?$/);
+            if (usernameMatch) {
+              github = `https://github.com/${usernameMatch[1]}`;
+            }
+          } else if (!github.startsWith("http")) {
+            github = `https://${github}`;
           }
-        } else if (!github.startsWith("http")) {
-          github = `https://${github}`;
+          dataToSave.github = github;
+          console.log("Normalized GitHub URL:", github);
         }
-        dataToSave.github = github;
-        console.log("Normalized GitHub URL:", github);
       }
 
       if (dataToSave.linkedin) {
         let linkedin = dataToSave.linkedin.trim();
-        // Remove @ if present
-        linkedin = linkedin.replace(/^@/, "");
-        if (!linkedin.includes("linkedin.com")) {
-          // It's just a username/slug
-          const usernameMatch = linkedin.match(/([a-zA-Z0-9_-]+)\/?$/);
-          if (usernameMatch) {
-            linkedin = `https://linkedin.com/in/${usernameMatch[1]}`;
+        // Check if user is skipping
+        if (skipPatterns.test(linkedin)) {
+          dataToSave.linkedin = "N/A";
+          console.log("LinkedIn skipped, storing as N/A");
+        } else {
+          // Remove @ if present
+          linkedin = linkedin.replace(/^@/, "");
+          if (!linkedin.includes("linkedin.com")) {
+            // It's just a username/slug
+            const usernameMatch = linkedin.match(/([a-zA-Z0-9_-]+)\/?$/);
+            if (usernameMatch) {
+              linkedin = `https://linkedin.com/in/${usernameMatch[1]}`;
+            }
+          } else if (!linkedin.startsWith("http")) {
+            linkedin = `https://${linkedin}`;
           }
-        } else if (!linkedin.startsWith("http")) {
-          linkedin = `https://${linkedin}`;
+          dataToSave.linkedin = linkedin;
+          console.log("Normalized LinkedIn URL:", linkedin);
         }
-        dataToSave.linkedin = linkedin;
-        console.log("Normalized LinkedIn URL:", linkedin);
       }
 
       if (dataToSave.portfolio) {
         let portfolio = dataToSave.portfolio.trim();
-        // Add https:// if missing and it looks like a domain
-        if (!portfolio.startsWith("http") && portfolio.includes(".")) {
-          portfolio = `https://${portfolio}`;
+        // Check if user is skipping
+        if (skipPatterns.test(portfolio)) {
+          dataToSave.portfolio = "N/A";
+          console.log("Portfolio skipped, storing as N/A");
+        } else {
+          // Add https:// if missing and it looks like a domain
+          if (!portfolio.startsWith("http") && portfolio.includes(".")) {
+            portfolio = `https://${portfolio}`;
+          }
+          dataToSave.portfolio = portfolio;
+          console.log("Normalized Portfolio URL:", portfolio);
         }
-        dataToSave.portfolio = portfolio;
-        console.log("Normalized Portfolio URL:", portfolio);
       }
 
       // Merge applicant data
