@@ -455,7 +455,9 @@ ${
 }
 
 **When they ask about status:**
-- Use \`check_application_status\` tool if they explicitly ask
+- FIRST verify they're authenticated (email_verified === true)
+- If not authenticated: guide them to verify email first - NON-NEGOTIABLE
+- If authenticated: use \`check_application_status\` tool
 - Share status in a friendly way
 - Don't bring it up unless they ask
 `
@@ -485,7 +487,18 @@ This user hasn't completed full onboarding yet (or is a guest). Be inclusive:
 
 ## CHECKING APPLICATION STATUS (if they ask)
 
-When user asks about their status (e.g., "check my status", "am i accepted?", "what's my application status?"):
+**⚠️ AUTHENTICATION REQUIRED - NON-NEGOTIABLE:**
+- User MUST be authenticated (have verified their email) to check their application status
+- If they haven't verified their email yet, tell them they need to verify first
+- No exceptions - this is a security requirement to protect user data
+- Check if \`session.applicant_data?.email\` exists AND \`session.applicant_data?.email_verified === true\`
+
+**How to handle unauthenticated users asking for status:**
+- "hey! to check your application status, i need to verify it's actually you first. can you quickly verify your email? just takes a sec 🔐"
+- Guide them through the email verification flow before proceeding
+- Never reveal status information to unverified users
+
+**When user IS authenticated and asks about their status:**
 - Use the \`check_application_status\` tool to get their current status
 - Share the status with them in a friendly way
 - If pending: encourage patience, mentor reviews applications regularly
@@ -876,7 +889,7 @@ function generateOnboardingModeInstructions(session: ISession): string {
 - \`roast_url\` - Roast any URL (portfolio, docs, blog, etc.)
 
 **Status & Info Tools:**
-- \`check_application_status\` - Get user's application status (accepted/rejected/waitlisted/pending)
+- \`check_application_status\` - Get user's application status (accepted/rejected/waitlisted/pending) **⚠️ REQUIRES AUTH: Only use if user has verified email!**
 
 **User Experience Tools:**
 - \`set_suggestions\` - Set clickable suggestion buttons (2-4 options, lowercase)
