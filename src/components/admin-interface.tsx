@@ -24,8 +24,7 @@ import {
 import { toast } from "sonner";
 
 interface Applicant {
-  session_id: string;
-  state: string;
+  email: string;
   applicant_data: {
     name: string;
     email: string;
@@ -130,7 +129,7 @@ export default function AdminInterface({
           return (
             app.applicant_data?.name?.toLowerCase().includes(query) ||
             app.applicant_data?.email?.toLowerCase().includes(query) ||
-            app.session_id.toLowerCase().includes(query)
+            app.email.toLowerCase().includes(query)
           );
         });
       }
@@ -287,7 +286,7 @@ export default function AdminInterface({
   }
 
   async function updateApplicationStatus(
-    sessionId: string,
+    email: string,
     status: "accepted" | "rejected"
   ) {
     try {
@@ -299,7 +298,7 @@ export default function AdminInterface({
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          session_id: sessionId,
+          email: email,
           application_status: status,
         }),
       });
@@ -328,7 +327,7 @@ export default function AdminInterface({
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          session_id: selectedApplicant.session_id,
+          email: selectedApplicant.email,
           review_notes: reviewNotes,
         }),
       });
@@ -685,14 +684,13 @@ export default function AdminInterface({
                     <div className="space-y-2 p-6">
                       {filteredApplicants.map((applicant) => (
                         <motion.div
-                          key={applicant.session_id}
+                          key={applicant.email}
                           layout
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
                           onClick={() => setSelectedApplicant(applicant)}
                           className={`p-4 rounded-lg cursor-pointer transition-all ${
-                            selectedApplicant?.session_id ===
-                            applicant.session_id
+                            selectedApplicant?.email === applicant.email
                               ? "liquid-glass-pill border-2 border-orange-500/50 bg-orange-500/10 glow-sm text-orange-50"
                               : "liquid-glass-pill border-2 border-white/5 hover:border-orange-500/20 hover:bg-white/5"
                           }`}
@@ -854,7 +852,7 @@ export default function AdminInterface({
                               className="flex-1 bg-green-600 hover:bg-green-700 text-white"
                               onClick={() =>
                                 updateApplicationStatus(
-                                  selectedApplicant.session_id,
+                                  selectedApplicant.email,
                                   "accepted"
                                 )
                               }
@@ -867,7 +865,7 @@ export default function AdminInterface({
                               className="flex-1"
                               onClick={() =>
                                 updateApplicationStatus(
-                                  selectedApplicant.session_id,
+                                  selectedApplicant.email,
                                   "rejected"
                                 )
                               }
@@ -1043,12 +1041,6 @@ export default function AdminInterface({
                                     selectedApplicant.applicant_data.submitted_at
                                   ).toLocaleDateString()
                                 : "—"}
-                            </div>
-                            <div>
-                              <span>session id:</span>{" "}
-                              <code className="text-xs bg-white/5 px-1 rounded">
-                                {selectedApplicant.session_id.slice(0, 8)}...
-                              </code>
                             </div>
                             {selectedApplicant.applicant_data?.reviewed_at && (
                               <div>

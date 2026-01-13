@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
-import Session, { type ApplicationStatus } from "@/lib/models/session";
+import Applicant, { type ApplicationStatus } from "@/lib/models/applicant";
 import { signToken, verifyToken } from "@/lib/jwt";
 
 // Admin credentials from environment
@@ -45,70 +45,81 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Build query
+    // Build query - only show applicants who have submitted
     const query: Record<string, unknown> = {
-      state: "COMPLETED", // Only show completed applications
+      submitted_at: { $exists: true, $ne: null },
     };
 
     if (status) {
-      query["applicant_data.application_status"] = status;
+      query.application_status = status;
     }
 
     if (email) {
-      query["applicant_data.email"] = email.toLowerCase();
+      query.email = email.toLowerCase();
     }
 
-    const applications = await Session.find(query)
+    const applications = await Applicant.find(query)
       .select({
-        session_id: 1,
-        state: 1,
-        "applicant_data.name": 1,
-        "applicant_data.email": 1,
-        "applicant_data.engineering_area": 1,
-        "applicant_data.skill_level": 1,
-        "applicant_data.career_goals": 1,
-        "applicant_data.github": 1,
-        "applicant_data.linkedin": 1,
-        "applicant_data.portfolio": 1,
-        "applicant_data.projects": 1,
-        "applicant_data.time_commitment": 1,
-        "applicant_data.submitted_at": 1,
-        "applicant_data.application_status": 1,
-        "applicant_data.review_notes": 1,
-        "applicant_data.reviewed_at": 1,
-        "applicant_data.reviewed_by": 1,
+        email: 1,
+        name: 1,
+        engineering_area: 1,
+        skill_level: 1,
+        career_goals: 1,
+        github: 1,
+        linkedin: 1,
+        portfolio: 1,
+        projects: 1,
+        time_commitment: 1,
+        submitted_at: 1,
+        application_status: 1,
+        review_notes: 1,
+        reviewed_at: 1,
+        reviewed_by: 1,
         created_at: 1,
         updated_at: 1,
       })
-      .sort({ "applicant_data.submitted_at": -1 })
+      .sort({ submitted_at: -1 })
       .lean();
 
     // Summary stats
-    const allCompleted = await Session.find({ state: "COMPLETED" }).lean();
+    const allSubmitted = await Applicant.find({
+      submitted_at: { $exists: true, $ne: null },
+    }).lean();
     const stats = {
-      total: allCompleted.length,
-      pending: allCompleted.filter(
-        (a) =>
-          !a.applicant_data?.application_status ||
-          a.applicant_data.application_status === "pending"
+      total: allSubmitted.length,
+      pending: allSubmitted.filter(
+        (a) => !a.application_status || a.application_status === "pending"
       ).length,
-      accepted: allCompleted.filter(
-        (a) => a.applicant_data?.application_status === "accepted"
-      ).length,
-      rejected: allCompleted.filter(
-        (a) => a.applicant_data?.application_status === "rejected"
-      ).length,
-      waitlisted: allCompleted.filter(
-        (a) => a.applicant_data?.application_status === "waitlisted"
+      accepted: allSubmitted.filter((a) => a.application_status === "accepted")
+        .length,
+      rejected: allSubmitted.filter((a) => a.application_status === "rejected")
+        .length,
+      waitlisted: allSubmitted.filter(
+        (a) => a.application_status === "waitlisted"
       ).length,
     };
 
     return NextResponse.json({
       stats,
       applications: applications.map((app) => ({
-        session_id: app.session_id,
-        state: app.state,
-        applicant_data: app.applicant_data,
+        email: app.email,
+        applicant_data: {
+          name: app.name,
+          email: app.email,
+          engineering_area: app.engineering_area,
+          skill_level: app.skill_level,
+          career_goals: app.career_goals,
+          github: app.github,
+          linkedin: app.linkedin,
+          portfolio: app.portfolio,
+          projects: app.projects,
+          time_commitment: app.time_commitment,
+          submitted_at: app.submitted_at,
+          application_status: app.application_status,
+          review_notes: app.review_notes,
+          reviewed_at: app.reviewed_at,
+          reviewed_by: app.reviewed_by,
+        },
         created_at: app.created_at,
         updated_at: app.updated_at,
       })),
@@ -136,7 +147,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { session_id, application_status, review_notes, reviewed_by } = body;
+    const { email, application_status, review_notes, reviewed_by } = body;
 
     // Validate status - convert "approved" to "accepted" for compatibility
     let status: ApplicationStatus = application_status as ApplicationStatus;
@@ -148,6 +159,7 @@ export async function PATCH(request: NextRequest) {
       "pending",
       "accepted",
       "rejected",
+      "waitlisted",
     ];
     if (!validStatuses.includes(status)) {
       return NextResponse.json(
@@ -158,17 +170,17 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Find and update session
-    const session = await Session.findOne({ session_id });
+    // Find and update applicant
+    const applicant = await Applicant.findOne({ email: email?.toLowerCase() });
 
-    if (!session) {
+    if (!applicant) {
       return NextResponse.json(
         { error: "Application not found" },
         { status: 404 }
       );
     }
 
-    if (session.state !== "COMPLETED") {
+    if (!applicant.submitted_at) {
       return NextResponse.json(
         { error: "Cannot review an incomplete application" },
         { status: 400 }
@@ -176,33 +188,32 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Update application status
-    const previousStatus = session.applicant_data.application_status;
-    session.applicant_data.application_status = status;
-    session.applicant_data.reviewed_at = new Date().toISOString();
-    session.applicant_data.reviewed_by = process.env.ADMIN_USERNAME || "admin";
+    const previousStatus = applicant.application_status;
+    applicant.application_status = status;
+    applicant.reviewed_at = new Date().toISOString();
+    applicant.reviewed_by = process.env.ADMIN_USERNAME || "admin";
 
     if (review_notes) {
-      session.applicant_data.review_notes = review_notes;
+      applicant.review_notes = review_notes;
     }
 
-    await session.save();
+    await applicant.save();
 
     console.log(
-      `Application status updated: ${session.applicant_data.email} - ${previousStatus} → ${status}`
+      `Application status updated: ${applicant.email} - ${previousStatus} → ${status}`
     );
 
     return NextResponse.json({
       success: true,
       message: `Application ${status}!`,
       application: {
-        session_id: session.session_id,
-        email: session.applicant_data.email,
-        name: session.applicant_data.name,
+        email: applicant.email,
+        name: applicant.name,
         previous_status: previousStatus,
         new_status: status,
-        review_notes: session.applicant_data.review_notes,
-        reviewed_at: session.applicant_data.reviewed_at,
-        reviewed_by: session.applicant_data.reviewed_by,
+        review_notes: applicant.review_notes,
+        reviewed_at: applicant.reviewed_at,
+        reviewed_by: applicant.reviewed_by,
       },
     });
   } catch (error) {

@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import ai from "@/app/api/chat/ai/config";
 import { googleAI } from "@genkit-ai/google-genai";
 import connectDB from "@/lib/mongodb";
-import Session from "@/lib/models/session";
+import Applicant from "@/lib/models/applicant";
 import AdminSession from "@/lib/models/admin-session";
 import { buildAdminPrompt } from "../prompt";
 import { createAdminTools } from "@/app/api/admin/tools";
@@ -48,17 +48,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Fetch all completed applications once
-    const applicants = await Session.find({ state: "COMPLETED" }).lean();
+    // Fetch all submitted applications once
+    const applicants = await Applicant.find({
+      submitted_at: { $exists: true, $ne: null },
+    }).lean();
 
     // Create callback for status updates
-    const onStatusChange = async (sessionId: string, status: string) => {
-      await Session.findOneAndUpdate(
-        { session_id: sessionId },
+    const onStatusChange = async (email: string, status: string) => {
+      await Applicant.findOneAndUpdate(
+        { email: email.toLowerCase() },
         {
           $set: {
-            "applicant_data.application_status": status,
-            "applicant_data.reviewed_at": new Date().toISOString(),
+            application_status: status,
+            reviewed_at: new Date().toISOString(),
           },
         }
       );

@@ -21,7 +21,7 @@ import { z } from "genkit";
 
 export function createAdminTools(
   applicants: any[],
-  onStatusChange?: (sessionId: string, status: string) => Promise<void>,
+  onStatusChange?: (email: string, status: string) => Promise<void>,
   onSaveNote?: (key: string, value: string) => Promise<void>,
   onGetNotes?: (key?: string) => Promise<string>
 ) {
@@ -52,15 +52,13 @@ export function createAdminTools(
       try {
         const limit = Math.min(input.limit || 15, 50);
 
-        // Filter applicants from provided data
-        let filtered = applicants.filter((app) => app.state === "COMPLETED");
+        // Filter applicants from provided data (already filtered by submitted_at in route)
+        let filtered = [...applicants];
 
         // Status filter
         if (input.status && input.status !== "all") {
           filtered = filtered.filter(
-            (app) =>
-              (app.applicant_data?.application_status || "pending") ===
-              input.status
+            (app) => (app.application_status || "pending") === input.status
           );
         }
 
@@ -68,8 +66,8 @@ export function createAdminTools(
         if (input.search) {
           const searchLower = input.search.toLowerCase();
           filtered = filtered.filter((app) => {
-            const name = app.applicant_data?.name || "";
-            const email = app.applicant_data?.email || "";
+            const name = app.name || "";
+            const email = app.email || "";
             return (
               name.toLowerCase().includes(searchLower) ||
               email.toLowerCase().includes(searchLower)
@@ -86,16 +84,16 @@ export function createAdminTools(
 
         const list = results
           .map((app, idx) => {
-            const status = app.applicant_data?.application_status || "pending";
+            const status = app.application_status || "pending";
             const emoji =
               status === "accepted"
                 ? "✅"
                 : status === "rejected"
                 ? "❌"
                 : "⏳";
-            return `${idx + 1}. ${app.applicant_data?.name} (${
-              app.applicant_data?.email
-            }) | ${app.applicant_data?.engineering_area} | ${emoji} ${status}`;
+            return `${idx + 1}. ${app.name} (${app.email}) | ${
+              app.engineering_area
+            } | ${emoji} ${status}`;
           })
           .join("\n");
 
@@ -134,15 +132,13 @@ export function createAdminTools(
 
         if (input.email) {
           app = applicants.find(
-            (a) =>
-              a.applicant_data?.email?.toLowerCase() ===
-              input.email?.toLowerCase()
-          )?.applicant_data;
+            (a) => a.email?.toLowerCase() === input.email?.toLowerCase()
+          );
         } else if (input.name) {
           const nameLower = input.name.toLowerCase();
           app = applicants.find((a) =>
-            a.applicant_data?.name?.toLowerCase().includes(nameLower)
-          )?.applicant_data;
+            a.name?.toLowerCase().includes(nameLower)
+          );
         }
 
         if (!app) {
@@ -201,21 +197,19 @@ submitted: ${app.submitted_at}
 
         // Find the applicant
         const applicant = applicants.find(
-          (a) =>
-            a.applicant_data?.email?.toLowerCase() ===
-            input.email?.toLowerCase()
+          (a) => a.email?.toLowerCase() === input.email?.toLowerCase()
         );
 
         if (!applicant) {
           return `applicant with email ${input.email} not found`;
         }
 
-        // Call the update handler
-        await onStatusChange(applicant.session_id, input.status);
+        // Call the update handler with email
+        await onStatusChange(applicant.email, input.status);
 
-        return `✅ ${applicant.applicant_data?.name}'s application has been ${
-          input.status
-        }${input.notes ? ` with note: ${input.notes}` : ""}`;
+        return `✅ ${applicant.name}'s application has been ${input.status}${
+          input.notes ? ` with note: ${input.notes}` : ""
+        }`;
       } catch (error) {
         return `error updating status: ${
           error instanceof Error ? error.message : "unknown error"
@@ -235,19 +229,17 @@ submitted: ${app.submitted_at}
     },
     async () => {
       try {
-        const completed = applicants.filter((a) => a.state === "COMPLETED");
+        // Applicants are already filtered by submitted_at in route
         const stats = {
-          total: completed.length,
-          pending: completed.filter(
-            (a) =>
-              !a.applicant_data?.application_status ||
-              a.applicant_data.application_status === "pending"
+          total: applicants.length,
+          pending: applicants.filter(
+            (a) => !a.application_status || a.application_status === "pending"
           ).length,
-          accepted: completed.filter(
-            (a) => a.applicant_data?.application_status === "accepted"
+          accepted: applicants.filter(
+            (a) => a.application_status === "accepted"
           ).length,
-          rejected: completed.filter(
-            (a) => a.applicant_data?.application_status === "rejected"
+          rejected: applicants.filter(
+            (a) => a.application_status === "rejected"
           ).length,
         };
 
