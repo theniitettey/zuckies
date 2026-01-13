@@ -367,13 +367,18 @@ dashboard stats:
 Available collections:
 - applicants: User applications (fields: email, name, engineering_area, skill_level, career_goals, github, linkedin, portfolio, time_commitment, application_status, submitted_at, reviewed_at, deleted_at)
 - feedback: User feedback submissions (fields: session_id, rating, feedback, suggestions, category, created_at, deleted_at)
-- sessions: Chat sessions (fields: email, session_id, messages, started_at, last_interaction, deleted_at)
+- sessions: Chat sessions with full message content (fields: email, session_id, messages[{role, content, timestamp}], started_at, last_interaction, deleted_at)
 
 Operations:
-1. READ: Query documents with filters, sorting, pagination
+1. READ: Query documents with filters, sorting, pagination. Sessions include full message content by default.
 2. CREATE: Insert new documents (use sparingly, mainly for feedback/notes)
 3. UPDATE: Modify existing documents matching a filter
 4. DELETE: Soft delete - sets deleted_at timestamp (documents can be restored)
+
+READ options:
+- raw_json=true: Returns full raw JSON data (useful for detailed inspection)
+- Sessions automatically show message content (truncated to 500 chars each)
+- Use fields parameter to select specific fields
 
 Filter examples (JSON string):
 - Exact match: {"application_status": "pending"}
@@ -490,6 +495,15 @@ Update examples (JSON string):
             return `no results found in ${input.collection}.`;
           }
 
+          // If raw_json is requested, return full data
+          if (input.raw_json) {
+            return `${results.length} results (raw JSON):\n${JSON.stringify(
+              results,
+              null,
+              2
+            )}`;
+          }
+
           // Format results based on collection type
           if (input.collection === "applicants") {
             const formatted = results.map((doc, idx) => {
@@ -529,15 +543,30 @@ Update examples (JSON string):
           }
 
           if (input.collection === "sessions") {
+            // Show session details including message content
             const formatted = results.map((doc, idx) => {
-              const msgCount = doc.messages?.length || 0;
-              return `${idx + 1}. ${
+              const messages = doc.messages || [];
+              const msgCount = messages.length;
+
+              // Format messages for display
+              const messageList = messages
+                .map((msg: any, msgIdx: number) => {
+                  const role = msg.role === "user" ? "👤" : "🤖";
+                  const content = msg.content?.substring(0, 500) || "[empty]";
+                  const truncated = msg.content?.length > 500 ? "..." : "";
+                  return `  ${role} ${content}${truncated}`;
+                })
+                .join("\n");
+
+              return `**Session ${idx + 1}**: ${
                 doc.email || "anonymous"
               } | ${msgCount} messages | last: ${
                 doc.last_interaction || "unknown"
-              }`;
+              }\n${messageList}`;
             });
-            return `${results.length} sessions:\n${formatted.join("\n")}`;
+            return `${results.length} sessions:\n\n${formatted.join(
+              "\n\n---\n\n"
+            )}`;
           }
 
           return `${results.length} results:\n${JSON.stringify(
