@@ -146,13 +146,15 @@ export async function POST(request: NextRequest) {
         // Handle each collection separately to avoid TypeScript union issues
         if (collection === "applicants") {
           if (operation === "read") {
-            let query = Applicant.find({
+            const results = await Applicant.find({
               ...safeFilter,
               deleted_at: { $exists: false },
-            });
-            if (safeProjection) query = query.select(safeProjection);
-            if (safeSort) query = query.sort(safeSort);
-            const results = await query.skip(skip).limit(limit).lean();
+            })
+              .select(safeProjection || {})
+              .sort(safeSort || {})
+              .skip(skip)
+              .limit(limit)
+              .lean();
             return { success: true, data: results };
           }
           if (operation === "create") {
@@ -185,13 +187,15 @@ export async function POST(request: NextRequest) {
 
         if (collection === "feedback") {
           if (operation === "read") {
-            let query = Feedback.find({
+            const results = await Feedback.find({
               ...safeFilter,
               deleted_at: { $exists: false },
-            });
-            if (safeProjection) query = query.select(safeProjection);
-            if (safeSort) query = query.sort(safeSort);
-            const results = await query.skip(skip).limit(limit).lean();
+            })
+              .select(safeProjection || {})
+              .sort(safeSort || {})
+              .skip(skip)
+              .limit(limit)
+              .lean();
             return { success: true, data: results };
           }
           if (operation === "create") {
@@ -224,13 +228,15 @@ export async function POST(request: NextRequest) {
 
         if (collection === "sessions") {
           if (operation === "read") {
-            let query = Session.find({
+            const results = await Session.find({
               ...safeFilter,
               deleted_at: { $exists: false },
-            });
-            if (safeProjection) query = query.select(safeProjection);
-            if (safeSort) query = query.sort(safeSort);
-            const results = await query.skip(skip).limit(limit).lean();
+            })
+              .select(safeProjection || {})
+              .sort(safeSort || {})
+              .skip(skip)
+              .limit(limit)
+              .lean();
             return { success: true, data: results };
           }
           if (operation === "create") {
