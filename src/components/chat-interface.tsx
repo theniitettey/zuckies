@@ -1196,70 +1196,73 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
 
       {/* Suggestion carousel - directly above input */}
       <AnimatePresence>
-        {getSuggestions().length > 0 && !isLoading && !showMemes && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className={`absolute left-0 right-0 z-30 px-3 sm:px-4 ${
-              sessionState?.completed
-                ? "bottom-[100px] sm:bottom-[110px]"
-                : "bottom-[72px] sm:bottom-[82px]"
-            }`}
-          >
-            <div className="max-w-2xl mx-auto overflow-hidden">
-              {/* Marquee container - only animate if enough items */}
-              {getSuggestions().length <= 3 ? (
-                // Few suggestions - just center them, no animation
-                <div className="flex justify-center gap-3 py-2">
-                  {getSuggestions().map((suggestion, i) => (
-                    <motion.button
-                      key={`${suggestion}-${i}`}
-                      type="button"
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      onClick={() => handleSuggestionClick(suggestion)}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="liquid-glass-pill px-4 py-2 rounded-full text-sm text-foreground/70 hover:text-foreground/90 whitespace-nowrap transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-400/50 flex-shrink-0"
-                    >
-                      {suggestion}
-                    </motion.button>
-                  ))}
-                </div>
-              ) : (
-                // Many suggestions - infinite scroll marquee
-                <div className="flex w-full overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)] group">
-                  <div
-                    className="flex gap-3 py-2 animate-marquee group-hover:[animation-play-state:paused]"
-                    style={{
-                      // Triple the items for smoother infinite loop
-                      animationDuration: `${getSuggestions().length * 4}s`,
-                    }}
-                  >
-                    {/* Triple the items for seamless loop */}
-                    {[
-                      ...getSuggestions(),
-                      ...getSuggestions(),
-                      ...getSuggestions(),
-                    ].map((suggestion, i) => (
-                      <button
+        {getSuggestions().length > 0 &&
+          !isLoading &&
+          !showMemes &&
+          !hasMemeInInput && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className={`absolute left-0 right-0 z-30 px-3 sm:px-4 ${
+                sessionState?.completed
+                  ? "bottom-[100px] sm:bottom-[110px]"
+                  : "bottom-[72px] sm:bottom-[82px]"
+              }`}
+            >
+              <div className="max-w-2xl mx-auto overflow-hidden">
+                {/* Marquee container - only animate if enough items */}
+                {getSuggestions().length <= 3 ? (
+                  // Few suggestions - just center them, no animation
+                  <div className="flex justify-center gap-3 py-2">
+                    {getSuggestions().map((suggestion, i) => (
+                      <motion.button
                         key={`${suggestion}-${i}`}
                         type="button"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.05 }}
                         onClick={() => handleSuggestionClick(suggestion)}
-                        className="liquid-glass-pill px-4 py-2 rounded-full text-sm text-foreground/70 hover:text-foreground/90 hover:scale-105 active:scale-95 whitespace-nowrap transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-400/50 flex-shrink-0"
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="liquid-glass-pill px-4 py-2 rounded-full text-sm text-foreground/70 hover:text-foreground/90 whitespace-nowrap transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-400/50 flex-shrink-0"
                       >
                         {suggestion}
-                      </button>
+                      </motion.button>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
+                ) : (
+                  // Many suggestions - infinite scroll marquee
+                  <div className="flex w-full overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)] group">
+                    <div
+                      className="flex gap-3 py-2 animate-marquee group-hover:[animation-play-state:paused]"
+                      style={{
+                        // Triple the items for smoother infinite loop
+                        animationDuration: `${getSuggestions().length * 4}s`,
+                      }}
+                    >
+                      {/* Triple the items for seamless loop */}
+                      {[
+                        ...getSuggestions(),
+                        ...getSuggestions(),
+                        ...getSuggestions(),
+                      ].map((suggestion, i) => (
+                        <button
+                          key={`${suggestion}-${i}`}
+                          type="button"
+                          onClick={() => handleSuggestionClick(suggestion)}
+                          className="liquid-glass-pill px-4 py-2 rounded-full text-sm text-foreground/70 hover:text-foreground/90 hover:scale-105 active:scale-95 whitespace-nowrap transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-400/50 flex-shrink-0"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
       </AnimatePresence>
 
       {/* Meme picker */}
@@ -1272,7 +1275,11 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             className={`absolute left-0 right-0 z-30 px-3 sm:px-4 ${
               sessionState?.completed
-                ? "bottom-[100px] sm:bottom-[110px]"
+                ? hasMemeInInput
+                  ? "bottom-[160px] sm:bottom-[180px]"
+                  : "bottom-[100px] sm:bottom-[110px]"
+                : hasMemeInInput
+                ? "bottom-[130px] sm:bottom-[150px]"
                 : "bottom-[70px] sm:bottom-[80px]"
             }`}
           >
@@ -1353,7 +1360,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
 
                 {/* Giphy results or default memes */}
                 <div
-                  className={`grid gap-2 max-h-52 mb-2 overflow-y-auto scrollbar-hide ${
+                  className={`grid gap-2 sm:gap-3 max-h-[40vh] sm:max-h-52 mb-2 overflow-y-auto scrollbar-hide ${
                     showGiphySearch && giphyResults.length > 0
                       ? "grid-cols-2 sm:grid-cols-4"
                       : "grid-cols-3 sm:grid-cols-5"
@@ -1450,20 +1457,20 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
             </motion.button>
 
             {/* Text input with meme preview */}
-            <div className="flex-1 min-w-0 max-w-full overflow-hidden flex flex-col">
+            <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
               {/* Meme preview - shows attached memes above input */}
               {hasMemeInInput && (
-                <div className="px-2 pt-2 pb-1 flex flex-wrap gap-2">
+                <div className="px-2 pt-2 pb-1 flex flex-wrap gap-2 max-h-24 sm:max-h-28 overflow-y-auto scrollbar-hide">
                   {Array.from(input.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)).map(
                     (match, i) => (
                       <div
                         key={i}
-                        className="relative inline-flex items-center group"
+                        className="relative inline-flex items-center group flex-shrink-0"
                       >
                         <img
                           src={match[2]}
                           alt={match[1] || "meme"}
-                          className="rounded-lg max-h-20 w-auto object-cover"
+                          className="rounded-lg h-16 sm:h-20 w-auto object-cover"
                         />
                         <button
                           type="button"
@@ -1480,7 +1487,7 @@ export default function ChatInterface({ onClose }: ChatInterfaceProps) {
                               prev.replace(imgRegex, "").trim()
                             );
                           }}
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-foreground/80 hover:bg-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-foreground/80 hover:bg-foreground flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                         >
                           <X className="w-3 h-3 text-background" />
                         </button>
